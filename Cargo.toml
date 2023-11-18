@@ -1,0 +1,36 @@
+[package]
+name = "openchute"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dxf = "0.5.0"
+eframe = { version = "0.23.0", default-features = false, features = [
+    #"accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    #"persistence",   # Enable restoring app state when restarting the app.
+] }
+egui_extras = "0.23.0"
+egui_plot = "0.23.0"
+env_logger = "0.10.1"
+json = "0.12.4"
+log = "0.4.20"
+nalgebra = "0.32.3"
+rfd = "0.12.1"
+getrandom = { version = "0.2.11", features = ["js"] }
+uuid = {version = "0.8.2", features = ["v4", "wasm-bindgen"]} # Fix wasm support for dxf
+three-d = "0.16.3"
+egui_glow = "0.23.0"
+glow = "0.13.0"
+uom = "0.35.0"
+evalexpr = "11.2.0"
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
