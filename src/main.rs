@@ -279,6 +279,7 @@ impl ChuteUI {
 
 impl eframe::App for ChuteUI {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.set_pixels_per_point(1.3);
         egui::TopBottomPanel::top("app_top_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.visuals_mut().button_frame = false;
@@ -287,25 +288,29 @@ impl eframe::App for ChuteUI {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if !self.initialised {
-                // Show buttons for loading a file or creating a new project
-                ui.heading("Welcome to <unnamed parachute design software> :D");
-                ui.label("You can also drag a design file onto here");
-                ui.horizontal(|ui| {
-                    if ui.button("Open parachute…").clicked() {
-                        self.open_project_file();
-                    };
-                    if ui.button("New parachute…").clicked() {
-                        self.initialised = true;
-                    };
-                });
-            } else {
-                match self.state.selected_tab {
-                    Tab::Design => self.design_tab(ui, frame),
-                    Tab::Simulation => self.simulation_tab(ui, frame),
-                    Tab::Experiment => self.experiment_tab(ui, frame),
+
+            egui::ScrollArea::vertical().id_source("scrollfirst")
+            .show(ui, |ui| {
+                if !self.initialised {
+                    // Show buttons for loading a file or creating a new project
+                    ui.heading("Welcome to <unnamed parachute design software> :D");
+                    ui.label("You can also drag a design file onto here");
+                    ui.horizontal(|ui| {
+                        if ui.button("Open parachute…").clicked() {
+                            self.open_project_file();
+                        };
+                        if ui.button("New parachute…").clicked() {
+                            self.initialised = true;
+                        };
+                    });
+                } else {
+                    match self.state.selected_tab {
+                        Tab::Design => self.design_tab(ui, frame),
+                        Tab::Simulation => self.simulation_tab(ui, frame),
+                        Tab::Experiment => self.experiment_tab(ui, frame),
+                    }
                 }
-            }
+            })
         });
 
         preview_files_being_dropped(ctx);

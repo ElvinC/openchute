@@ -74,7 +74,7 @@ pub struct ChuteDesigner {
     test_color: [f32; 3],
 
     input_values: Vec<InputValue>, // Each needs a name, value, range (in m or deg).
-    parametric_expressions: Vec<ParameterValue>,
+    parameter_values: Vec<ParameterValue>,
 
     evaluator_context: evalexpr::HashMapContext, // evaluator that handles variables etc. Note: stored value always in SI base unit
 }
@@ -89,7 +89,7 @@ impl PartialEq for ChuteDesigner {
         else if self.use_global_seam_allowance.ne(&other.use_global_seam_allowance) { false }
         else if self.test_color.ne(&other.test_color) { false }
         else if self.input_values.ne(&other.input_values) { false }
-        else if self.parametric_expressions.ne(&other.parametric_expressions) { false }
+        else if self.parameter_values.ne(&other.parameter_values) { false }
         else { true }
     }
 
@@ -183,39 +183,62 @@ impl ChuteDesigner {
         });
     }
 
-    fn validate_identifier(id: &String, ui: &mut egui::Ui) -> bool {
+    fn has_id_error(id: &String) -> Option<String> {
         if id.contains(char::is_whitespace) {
-            ui.label("Error: ID cannot contain whitespace characters");
+            return Some("Error: ID cannot contain whitespace characters".into());
         }
         else if id.len() == 0 {
-            ui.label("Error: ID cannot be empty");
+            return Some("Error: ID cannot be empty".into());
         }
         else if !id.chars().all(char::is_alphanumeric) {
-            ui.label("Error: ID must be alphanumeric");
+            return Some("Error: ID must be alphanumeric".into());
         }
         else if !id.chars().next().is_some_and(char::is_alphabetic) {
-            ui.label("Error: First letter must be alphabetic");
+            return Some("Error: First letter must be alphabetic".into());
         }
         else {
-            return true;
+            return None;
         };
-        false
+    }
+
+    fn default_vars() -> Vec<(String, f64)> {
+        vec![
+            ("m".into(), 1.0),
+            ("mm".into(), 0.001),
+            ("yd".into(), 0.9144),
+            ("ft".into(), 0.3048),
+            ("inch".into(), 0.0254),
+            ("rad".into(), 1.0),
+            ("deg".into(), PI / 180.0)]
     }
 
     pub fn simulation_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
         // Simulation stuff
         self.evaluator_context.clear_variables();
+        for (name, val) in ChuteDesigner::default_vars() {
+            self.evaluator_context.set_value(name, evalexpr::Value::Float(val)).unwrap();
+        }
+        
+        ui.heading("Input variables:");
+
+        if ui.button("Add input").clicked() {
+            self.input_values.push(InputValue { description: "".into(), id: format!("input{}", self.input_values.len()+1), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0 })
+        }
 
         for input_value in self.input_values.iter_mut() {
-            ui.label("ID:");
-            ui.text_edit_singleline(&mut input_value.id);
+            ui.horizontal(|ui| {
+                ui.label("ID:");
+                ui.text_edit_singleline(&mut input_value.id);
+            });
             // TODO: Add a range setting and unit selection
             ui::length_slider(ui, &mut input_value.value, use_imperial, 0.0..=10.0, &length::meter, &length::foot);
 
             if evalexpr::Context::get_value(&self.evaluator_context, &input_value.id).is_some() {
                 ui.label("Error: Identifier already used");
             }
-            else if ChuteDesigner::validate_identifier(&input_value.id, ui) {
+            else if let Some(msg) = ChuteDesigner::has_id_error(&input_value.id) {
+                ui.label(msg);
+            } else {
                 self.evaluator_context.set_value(input_value.id.clone(), evalexpr::Value::Float(input_value.value)).unwrap_or_else(|_| {
                     ui.label("Unable to save value...");
                 })
@@ -223,33 +246,67 @@ impl ChuteDesigner {
             ui.separator();
         }
 
-        ui.label("PARAMETERS:");
-
-        // Similar for parameters
-        for parameter in self.parametric_expressions.iter_mut() {
-            ui.label("ID:");
-            ui.text_edit_singleline(&mut parameter.id);
-            ui.text_edit_singleline(&mut parameter.expression);
-
-            if evalexpr::Context::get_value(&self.evaluator_context, &parameter.id).is_some() {
-                ui.label("Error: Identifier already used");
-            }
-            else if ChuteDesigner::validate_identifier(&parameter.id, ui) {
-                let computed = evalexpr::eval_number_with_context(&parameter.expression, &self.evaluator_context);
-                if computed.is_ok() {
-                    let value = computed.unwrap_or_default();
-                    ui.label(format!("Result: {}", value));
-
-                    self.evaluator_context.set_value(parameter.id.clone(), evalexpr::Value::Float(value));
-                } else {
-                    ui.label(format!("Error: {:?}", computed));
-                }
-            }
-
-
-
-            ui.separator();
+        if ui.button("Add parameter").clicked() {
+            self.parameter_values.push(ParameterValue {
+                id: format!("param{}", self.parameter_values.len()+1),
+                expression: "1.0*m+2.0*mm".into(),
+                display_unit: StandardUnit::MeterFoot,
+            })
         }
+
+        ui.push_id("paramtable", |ui| {
+            egui_extras::TableBuilder::new(ui)
+            .striped(true)
+            .column(egui_extras::Column::auto().at_least(60.0).resizable(true))
+            .column(egui_extras::Column::auto().at_least(120.0).resizable(true))
+            .column(egui_extras::Column::remainder())
+            .header(20.0, |mut header| {
+                header.col(|ui| {
+                    ui.label(egui::RichText::new("ID").strong());
+                });
+                header.col(|ui| {
+                    ui.label(egui::RichText::new("Expression").strong());
+                });
+                header.col(|ui| {
+                    ui.label(egui::RichText::new("Result").strong());
+                });
+            })
+            .body(|mut body| {
+                for parameter in self.parameter_values.iter_mut() {
+
+
+                    body.row(20.0, |mut row| {
+                        row.col(|ui| {
+                            ui.text_edit_singleline(&mut parameter.id);
+                        });
+                        row.col(|ui| {
+                            ui.text_edit_singleline(&mut parameter.expression);
+                        });
+                        row.col(|ui| {
+                            
+                            if evalexpr::Context::get_value(&self.evaluator_context, &parameter.id).is_some() {
+                                ui.label("Error: Identifier already used");
+                            }
+                            else if let Some(msg) = ChuteDesigner::has_id_error(&parameter.id) {
+                                ui.label(msg);
+                            }
+                            else {
+                                let computed = evalexpr::eval_number_with_context(&parameter.expression, &self.evaluator_context);
+                                if computed.is_ok() {
+                                    let value = computed.unwrap_or_default();
+                                    ui.label(format!("Result: {:}", (value * 100_000_000.0).round() / 100_000_000.0));
+                
+                                    self.evaluator_context.set_value(parameter.id.clone(), evalexpr::Value::Float(value));
+                                } else {
+                                    ui.label(format!("Error: {:?}", computed));
+                                }
+                            }
+                        });
+                        
+                    });
+                }
+            });    
+        });
     }
 
     pub fn experiment_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
@@ -264,15 +321,24 @@ impl ChuteDesigner {
 
 impl Default for ChuteDesigner {
     fn default() -> Self {
-        let context = evalexpr::HashMapContext::new();
+        let context = evalexpr::context_map! {
+            "m" => 1.0,
+            "mm" => 0.001,
+            "yd" => 0.9144,
+            "ft" => 0.3048,
+            "inch" => 0.0254,
+            "rad" => 1.0,
+            "deg" => PI / 180.0,
+        }.unwrap();
+
         // TODO: make math functions work without prefix
 
         let test_input1 = InputValue {description: "".into(), id: "input1".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
         let test_input2 = InputValue {description: "".into(), id: "input2".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
 
-        let param1 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param1".into(), expression: "1".into()};
-        let param2 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param2".into(), expression: "1".into()};
-        let param3 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param3".into(), expression: "1".into()};
+        let param1 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param1".into(), expression: "input1*2".into()};
+        let param2 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param2".into(), expression: "input2*2".into()};
+        let param3 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param3".into(), expression: "param1+param2".into()};
 
         Self { 
             name: "Untitled Parachute".to_owned(),
@@ -284,7 +350,7 @@ impl Default for ChuteDesigner {
             global_seam_allowance: 0.01,
             test_color: [0.0, 0.0, 0.0],
             input_values: vec![test_input1, test_input2],
-            parametric_expressions: vec![param1, param2, param3],
+            parameter_values: vec![param1, param2, param3],
             evaluator_context: context,
         }
     }

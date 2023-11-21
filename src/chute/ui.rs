@@ -92,36 +92,35 @@ pub struct Widget3D {
 impl Widget3D {
     pub fn handle_triangle(&mut self, ui: &mut egui::Ui) {
     
-        egui::ScrollArea::both().show(ui, |ui| {
-            egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                let (rect, response) =
-                    ui.allocate_exact_size(egui::Vec2::splat(512.0), egui::Sense::drag());
-    
-                let angle_delta = (response.drag_delta().x, response.drag_delta().y);
-                self.angle_x += angle_delta.0 * 0.01;
-                self.angle_y += angle_delta.1 * 0.01;
-    
-                // Clone locals so we can move them into the paint callback:
-                let angle = (self.angle_x, self.angle_y);
-    
-                let callback = egui::PaintCallback {
-                    rect,
-                    callback: std::sync::Arc::new(egui_glow::CallbackFn::new(
-                        move |info, painter| {
-                            with_three_d(painter.gl(), |three_d| {
-                                three_d.frame(
-                                    FrameInput::new(&three_d.context, &info, painter),
-                                    angle,
-                                    angle_delta
-                                );
-                            });
-                        },
-                    )),
-                };
-                ui.painter().add(callback);
-            });
-            ui.label("Drag to rotate!");
+        egui::Frame::canvas(ui.style()).show(ui, |ui| {
+            let (rect, response) =
+                ui.allocate_exact_size(egui::Vec2::splat(512.0), egui::Sense::drag());
+
+            let angle_delta = (response.drag_delta().x, response.drag_delta().y);
+            self.angle_x += angle_delta.0 * 0.01;
+            self.angle_y += angle_delta.1 * 0.01;
+
+            // Clone locals so we can move them into the paint callback:
+            let angle = (self.angle_x, self.angle_y);
+
+            let callback = egui::PaintCallback {
+                rect,
+                callback: std::sync::Arc::new(egui_glow::CallbackFn::new(
+                    move |info, painter| {
+                        with_three_d(painter.gl(), |three_d| {
+                            three_d.frame(
+                                FrameInput::new(&three_d.context, &info, painter),
+                                angle,
+                                angle_delta
+                            );
+                        });
+                    },
+                )),
+            };
+            ui.painter().add(callback);
         });
+        ui.label("Drag to rotate!");
+
     }   
 }
 
