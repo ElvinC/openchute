@@ -22,6 +22,8 @@ use std::f64::consts::PI;
 
 use uom::si::{self, length};
 
+use super::geometry::ToPoints;
+
 // Represents a band. Can contain multiple geometries representing the cross section, but is symmetrical and has a fixed number of gores
 #[derive(Clone)]
 pub struct PolygonalChuteSection {
@@ -58,12 +60,14 @@ pub struct ChuteSection {
 }
 
 impl ChuteSection {
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, expr_context: &evalexpr::HashMapContext, index_id: u16) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext, index_id: u16) {
         ui.label("Fabric:");
         self.fabric.ui(ui, frame, use_imperial, index_id);
         
         ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
         ui::integer_edit_field(ui, &mut self.gores);
+
+        let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
         
         match &mut self.section_type {
             ChuteSectionType::Circular(sec) => {
@@ -81,6 +85,11 @@ impl ChuteSection {
                     ui.text_edit_singleline(&mut sec.expressions[3]);
                 });
 
+                sec.line.begin.x = eval(&sec.expressions[0]);
+                sec.line.begin.y = eval(&sec.expressions[1]);
+                sec.line.end.x = eval(&sec.expressions[2]);
+                sec.line.end.y = eval(&sec.expressions[3]);
+
             },
             ChuteSectionType::Polygonal(sec) => {
                 todo!()
@@ -91,22 +100,63 @@ impl ChuteSection {
     fn new_circular() -> Self {
         Self { section_type: ChuteSectionType::Circular(CircularChuteSection::default()), gores: 8, fabric: FabricSelector::new(), seam_allowance: (0.01, 0.01, 0.01, 0.01) }
     }
+
+    fn get_cross_section(&self, resolution: u32) -> geometry::Points {
+        // to 2D section
+        match &self.section_type {
+            ChuteSectionType::Circular(circ) => {
+                circ.line.to_points(resolution)
+            },
+            ChuteSectionType::Polygonal(poly) => {
+                todo!()
+            }
+        }
+    }
+
+    fn get_gore() {
+    }
+
+    fn get_3d_model() {
+
+    }
 }
 
 impl geometry::ToPoints for ChuteSection {
-    fn to_points(&mut self, resolution: u32) -> geometry::Points {
-        todo!()
+    fn to_points(&self, resolution: u32) -> geometry::Points {
+        self.get_cross_section(resolution)
     }
 }
 
 // Standard unit combinations for input sliders
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Default)]
 pub enum StandardUnit {
-    UnitLess, // Can be used if other SI units are needed
+    #[default] UnitLess, // Can be used if other SI units are needed
     MeterFoot,
     MillimeterInch,
     Radian,
     Degree,
+}
+
+impl StandardUnit {
+    pub fn get_options() -> Vec<Self> {
+        vec![
+            Self::UnitLess,
+            Self::MeterFoot,
+            Self::MillimeterInch,
+            Self::Radian,
+            Self::Degree,
+        ]
+    }
+
+    pub fn get_general_name(&self) -> String {
+        match self {
+            Self::UnitLess => "unitless".into(),
+            Self::MeterFoot => "m | ft".into(),
+            Self::MillimeterInch => "mm | in".into(),
+            Self::Radian => "rad".into(),
+            Self::Degree => "deg".into(),
+        }
+    }
 }
 
 // Represents a slider that can be used as input
@@ -127,9 +177,6 @@ pub struct ParameterValue {
     pub expression: String, // Mathematical expression. Value not needed since it's saved in the context
     pub display_unit: StandardUnit, // Only for display purposes. 
 }
-
-// TODO: Add warning when id used multiple times
-// TODO: Add way to move parameters up and down
 
 
 // Parachute designer interface, implements the relevant UI drawing functions
@@ -179,7 +226,7 @@ unit! {
     system: uom::si;
     quantity: uom::si::length;
 
-    @sheppey: 1408.176; "sheppey", "sheppey", "sheppeys";
+    @unitless: 1.0; "-", "-", "-";
 }
 
 
@@ -189,17 +236,38 @@ impl ChuteDesigner {
         // Number of gores
         ui::integer_edit_field(ui, &mut self.gores);
 
-        ui::length_slider(ui, &mut self.diameter, use_imperial, 0.0..=6.0, &length::meter, &length::microinch);
-        ui::length_slider(ui, &mut self.diameter, use_imperial, 0.0..=6.0, &length::meter, &length::inch);
-        ui::length_slider(ui, &mut self.diameter, use_imperial, 0.0..=10.0, &length::millimeter, &sheppey);
-
-
         ui.checkbox(&mut self.use_global_seam_allowance, "Use global seam allowance");
+
+        ui::dimension_field(ui, &mut self.diameter, use_imperial, 0.0..=10.0);
+        ui::number_edit_field(ui, &mut self.diameter);
 
         ui.add_enabled(self.use_global_seam_allowance, egui::Slider::new::<f64>(&mut self.global_seam_allowance, 0.0..=5.0));
         ui.add_enabled(self.use_global_seam_allowance, egui::Checkbox::new(&mut false, "Cut corners of seam allowance"));
 
-        egui::widgets::color_picker::color_edit_button_rgb(ui, &mut self.test_color);
+        //egui::widgets::color_picker::color_edit_button_rgb(ui, &mut self.test_color);
+
+        ui.horizontal(|ui| {
+            ui.label("Name:");
+            ui.text_edit_singleline(&mut self.name)
+        });
+
+        for (idx, input_value) in self.input_values.iter_mut().enumerate() {
+            ui.label(&input_value.id);
+            ui.horizontal(|ui| {
+                ui.label("Value:");
+                
+                match &input_value.unit {
+                    StandardUnit::UnitLess => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &unitless, &unitless),
+                    StandardUnit::MeterFoot => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::meter, &length::foot),
+                    StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
+                    StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
+                    StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
+                }
+
+            });
+
+            ui.separator();
+        }
 
         self.draw_cross_section(ui, frame);
     }
@@ -225,6 +293,7 @@ impl ChuteDesigner {
 
     pub fn draw_cross_section(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         // Generate points
+        /* 
         let cross = geometry::Points::from_vec((0..80).map(|ang| {
             na::Vector2::new((ang as f64 * PI/180.0).cos() * self.diameter * 0.5,(ang as f64 * PI/180.0).sin() * 0.7 * self.diameter * 0.5)
         }).collect());
@@ -233,7 +302,11 @@ impl ChuteDesigner {
             na::Vector2::new(-(ang as f64 * PI/180.0).cos() * self.diameter * 0.5,(ang as f64 * PI/180.0).sin() * 0.7 * self.diameter * 0.5)
         }).collect());
 
-        let lines = vec![cross, cross1];
+        */
+
+        //let lines = vec![cross, cross1];
+        let mut lines = self.get_cross_section();
+        lines.append(&mut self.get_cross_section().iter().map(|p| p.mirror_x()).collect());
 
         self.equal_aspect_plot(ui, frame, &lines, Some(1));
     }
@@ -289,34 +362,74 @@ impl ChuteDesigner {
 
     pub fn simulation_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
         // Simulation stuff
+
         self.evaluator_context.clear_variables();
         for (name, val) in ChuteDesigner::default_vars() {
             self.evaluator_context.set_value(name, evalexpr::Value::Float(val)).unwrap();
         }
         
         ui.heading("Input variables:");
+        ui.separator();
 
         if ui.button("Add input").clicked() {
             self.input_values.push(InputValue { description: "".into(), id: format!("input{}", self.input_values.len()+1), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0 })
         }
 
         let mut to_delete: Option<usize> = None;
+        let mut to_move: Option<(usize, bool)> = None;
+        let num_parameters = self.input_values.len();
 
         for (idx, input_value) in self.input_values.iter_mut().enumerate() {
+            
+            ui.horizontal(|ui| {
+                if ui.button("❌").clicked() {
+                    to_delete = Some(idx);
+                };
+                if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
+                    to_move = Some((idx, true));
+                }
+                if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
+                    to_move = Some((idx, false));
+                };
+            });
+            
             ui.horizontal(|ui| {
                 ui.label("ID:");
                 ui.text_edit_singleline(&mut input_value.id);
             });
-            ui.horizontal(|ui| {
-                ui.label("Value:");
-                ui::length_slider(ui, &mut input_value.value, use_imperial, 0.0..=10.0, &length::meter, &length::foot);
+
+            egui::ComboBox::from_id_source(&input_value.id).width(200.0)
+            .selected_text(input_value.unit.get_general_name())
+            .show_ui(ui, |ui| {
+                for (_idx, option) in StandardUnit::get_options().iter().enumerate() {
+                    ui.selectable_value(&mut input_value.unit, option.clone(), option.get_general_name());
+                }
             });
 
-            if ui.button("❌").clicked() {
-                to_delete = Some(idx);
-            };
 
-            // TODO: Add a range setting and unit selection
+            ui.horizontal(|ui| {
+                ui.label("Value:");
+                
+                match &input_value.unit {
+                    StandardUnit::UnitLess => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &unitless, &unitless),
+                    StandardUnit::MeterFoot => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::meter, &length::foot),
+                    StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
+                    StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
+                    StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
+                }                
+            });
+
+            // TODO: Add unit conversion selection
+            let mut start = *input_value.range.start();
+            let mut end = *input_value.range.end();
+
+            ui.horizontal(|ui| {
+                ui.label("Range: ");
+                ui::number_edit_field(ui, &mut start);
+                ui.label("to");
+                ui::number_edit_field(ui, &mut end);
+            });
+            input_value.range = start ..= end;
 
             if evalexpr::Context::get_value(&self.evaluator_context, &input_value.id).is_some() {
                 ui.label("Error: Identifier already used");
@@ -329,6 +442,15 @@ impl ChuteDesigner {
                 })
             }
             ui.separator();
+        }
+
+        if let Some((idx, direction)) = to_move {
+            if idx > 0 && direction {
+                // Swap upwards
+                self.input_values.swap(idx, idx-1);
+            } else if idx < (self.input_values.len() - 1) && !direction{
+                self.input_values.swap(idx, idx+1);
+            }
         }
 
         
@@ -442,15 +564,54 @@ impl ChuteDesigner {
 
         ui.heading("Cross-section geometry");
 
-        if ui.button("Add circular band").clicked() {
-            self.chute_sections.push(ChuteSection::new_circular());
-        }
+        ui.horizontal(|ui| {
+            if ui.button("Add polygonal geometry").clicked() {
+                todo!();
+            }
+            
+            if ui.button("Add circular band").clicked() {
+                self.chute_sections.push(ChuteSection::new_circular());
+            }
+        });
 
+
+        // Parachute section
+
+        let mut to_delete: Option<usize> = None;
+        let mut to_move: Option<(usize, bool)> = None; // Option containing index and true if moving up and false if down
+        let num_parameters = self.chute_sections.len();
         for (idx, chute_section) in self.chute_sections.iter_mut().enumerate() {
             ui.separator();
-
+            ui.horizontal(|ui| {
+                if ui.button("❌").clicked() {
+                    to_delete = Some(idx);
+                };
+                if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
+                    to_move = Some((idx, true));
+                }
+                if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
+                    to_move = Some((idx, false));
+                };
+            });
             chute_section.ui(ui, frame, use_imperial, &self.evaluator_context, idx as u16);
         }
+
+        if let Some((idx, direction)) = to_move {
+            if idx > 0 && direction {
+                // Swap upwards
+                self.chute_sections.swap(idx, idx-1);
+            } else if idx < (self.parameter_values.len() - 1) && !direction{
+                self.chute_sections.swap(idx, idx+1);
+            }
+        }
+
+        if let Some(delete_idx) = to_delete {
+            self.chute_sections.remove(delete_idx);
+        }
+
+        ui.separator();
+
+        self.draw_cross_section(ui, frame);
 
     }
 
@@ -459,7 +620,22 @@ impl ChuteDesigner {
         // E.g. input velocity/density and get CD
         ui.label("Descent rate");
         ui::length_slider(ui, &mut self.diameter, use_imperial, 0.0..=10.0, &si::velocity::meter_per_second, &si::velocity::foot_per_second);
+    }
 
+    pub fn get_cross_section(&self) -> Vec<geometry::Points> {
+        // get 2D cross section for display purposes
+        let mut result = vec![];
+
+        for chute_section in &self.chute_sections {
+            // use relatively low resolution at 30 points
+            result.push(chute_section.get_cross_section(30));
+        }
+
+        result
+    }
+
+    pub fn get_3d_data(&self) {
+        todo!()
     }
 }
 
@@ -481,14 +657,28 @@ impl Default for ChuteDesigner {
 
         // TODO: make math functions work without prefix
 
-        let test_input1 = InputValue {description: "".into(), id: "input1".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
-        let test_input2 = InputValue {description: "".into(), id: "input2".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
+        let input1 = InputValue {description: "".into(), id: "input1".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
+        let input2 = InputValue {description: "".into(), id: "input2".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
+
+        let input3 = InputValue {description: "Parachute Diameter".into(), id: "diameter".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 1.0};
+        let input4 = InputValue {description: "height / diameter of parachute".into(), id: "height_ratio".into(), range: 0.0..=1.0, unit: StandardUnit::UnitLess, value: 0.7};
+        let input5 = InputValue {description: "vent_diameter / diameter of parachute".into(), id: "vent_ratio".into(), range: 0.0..=1.0, unit: StandardUnit::UnitLess, value: 0.2};
+
 
         let param1 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param1".into(), expression: "input1*2".into()};
         let param2 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param2".into(), expression: "input2*2".into()};
         let param3 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param3".into(), expression: "param1+param2".into()};
 
-        let section1 = ChuteSection::new_circular();
+        let mut section1 = ChuteSection::new_circular();
+        match &mut section1.section_type {
+            ChuteSectionType::Circular(sec) => {
+                sec.expressions[0] = "vent_ratio*diameter".into();
+                sec.expressions[1] = "height_ratio*diameter".into();
+                sec.expressions[2] = "diameter".into();
+                sec.expressions[3] = "0".into();
+            },
+            _ => {}
+        }
 
         Self { 
             name: "Untitled Parachute".to_owned(),
@@ -499,7 +689,7 @@ impl Default for ChuteDesigner {
             use_global_seam_allowance: true,
             global_seam_allowance: 0.01,
             test_color: [0.0, 0.0, 0.0],
-            input_values: vec![test_input1, test_input2],
+            input_values: vec![input1, input2, input3, input4, input5],
             parameter_values: vec![param1, param2, param3],
             evaluator_context: context,
             chute_sections: vec![section1],

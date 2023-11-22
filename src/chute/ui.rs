@@ -68,7 +68,7 @@ pub fn dimension_field(ui: &mut egui::Ui, value_metric: &mut f64, use_imperial: 
     let field = egui::Slider::new::<f64>(&mut value, new_range)
                             .text(if use_imperial { "[ft]" } else { "[m]" })
                             .clamp_to_range(false);
-    
+
     let res = ui.add(field)
                           .context_menu(|ui| {
                             if ui.button("Reset value").clicked() {
@@ -81,6 +81,16 @@ pub fn dimension_field(ui: &mut egui::Ui, value_metric: &mut f64, use_imperial: 
     res
 }
 
+pub fn number_edit_field(ui: &mut egui::Ui, value: &mut f64) -> egui::Response {
+    let mut tmp_value = format!("{}", value);
+
+    let res = ui.add(egui::TextEdit::singleline(&mut tmp_value).desired_width(10.0).clip_text(false));
+
+    if let Ok(result) = tmp_value.parse() {
+        *value = result;
+    }
+    res
+}
 
 #[derive(Default)]
 pub struct Widget3D {

@@ -28,7 +28,7 @@ pub struct Line {
 }
 
 impl ToPoints for Line {
-    fn to_points(&mut self, _resolution: u32) -> Points {
+    fn to_points(&self, _resolution: u32) -> Points {
         Points::from_vec(vec![self.begin.clone(), self.end.clone()])
     }
 }
@@ -57,7 +57,7 @@ impl EllipseArc {
 }
 
 impl ToPoints for EllipseArc {
-    fn to_points(&mut self, resolution: u32) -> Points {
+    fn to_points(&self, resolution: u32) -> Points {
         let start = self.start_angle % (2.0 * PI);
         let stop = if self.stop_angle > 2.0 * PI { self.stop_angle % (2.0 * PI) } else { self.stop_angle };
         let diff = stop - start;
@@ -96,7 +96,7 @@ impl BezierSpline {
 }
 
 impl ToPoints for BezierSpline {
-    fn to_points(&mut self, resolution: u32) -> Points {
+    fn to_points(&self, resolution: u32) -> Points {
         let mut result = vec![];
 
         if self.control_points.len() == 0 {
@@ -136,6 +136,7 @@ impl ToPoints for BezierSpline {
 
 
 // A collection of points
+#[derive(Clone)]
 pub struct Points {
     pub points: Vec<Vector2<f64>>,
 }
@@ -149,7 +150,7 @@ impl Points {
         Self { points: points }
     }
     
-    fn bounds(&self) -> (Vector2<f64>, Vector2<f64>) {
+    pub fn bounds(&self) -> (Vector2<f64>, Vector2<f64>) {
         let mut min = self.points[0];
         let mut max = self.points[0];
 
@@ -162,12 +163,21 @@ impl Points {
 
         (min, max)
     }
+
+    pub fn mirror_x(&self) -> Self {
+        // returns a copy mirrored around the X axis
+        let mut new = self.clone();
+        for point in new.points.iter_mut() {
+            point.x = -point.x;
+        }
+        new
+    }
 }
 
 pub trait ToPoints: Clone {
     // Resolution is roughly number of points in full circle
     // 200 default is fine
-    fn to_points(&mut self, resolution: u32) -> Points;
+    fn to_points(&self, resolution: u32) -> Points;
 }
  
 
