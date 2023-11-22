@@ -21,9 +21,10 @@ fn polygon_cicumference_ratio(n: u16) -> f64 {
 	return edge_length * n as f64
 }
 
-struct Line {
-    begin: Vector2<f64>,
-    end: Vector2<f64>,
+#[derive(Clone)]
+pub struct Line {
+    pub begin: Vector2<f64>,
+    pub end: Vector2<f64>,
 }
 
 impl ToPoints for Line {
@@ -32,6 +33,7 @@ impl ToPoints for Line {
     }
 }
 
+#[derive(Clone)]
 struct EllipseArc {
     start_angle: f64,
     stop_angle: f64,
@@ -78,6 +80,7 @@ impl ToPoints for EllipseArc {
 }
 
 // A generic bezier curve
+#[derive(Clone)]
 struct BezierSpline {
     control_points: Vec<(Vector2<f64>, Vector2<f64>, Vector2<f64>)>, // Handle1, center, handle2
 }
@@ -161,7 +164,7 @@ impl Points {
     }
 }
 
-pub trait ToPoints {
+pub trait ToPoints: Clone {
     // Resolution is roughly number of points in full circle
     // 200 default is fine
     fn to_points(&mut self, resolution: u32) -> Points;

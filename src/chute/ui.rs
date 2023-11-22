@@ -42,9 +42,8 @@ I: uom::Conversion<f64> + si::Unit
 
 
 pub fn integer_edit_field(ui: &mut egui::Ui, value: &mut u16) -> egui::Response {
-    ui.label("Field name:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
     let field = egui::Slider::new::<u16>(value, 4..=24)
-                            .text("[mm]")
+                            .text("[]")
                             .clamp_to_range(false);
     
     let res = ui.add(field)
@@ -320,13 +319,13 @@ impl ThreeDApp {
         let mut new_colors: Vec<Srgba> = vec![];
 
         for j in 0..num_points_per_gore {
-            new_colors.push(Srgba::new(255, 0, 155, 255));
+            new_colors.push(Srgba::new(255, 0, 0, 255));
         }
 
         for i in 0..num_gores {
             for j in 0..num_points_per_gore {
-                new_colors.push(Srgba::new((i % 2) as u8 * 255, 0, 155, 255));
-                new_colors.push(Srgba::new((i % 2) as u8 * 255, 0, 155, 255));
+                new_colors.push(Srgba::new((i % 2) as u8 * 255, 0, 0, 255));
+                new_colors.push(Srgba::new((i % 2) as u8 * 255, 0, 0, 255));
             }
         }
 

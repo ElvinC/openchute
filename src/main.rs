@@ -166,7 +166,7 @@ impl ChuteUI {
                 Tab::Design,
             ),
             (
-                "Simulation",
+                "Geometry",
                 Tab::Simulation,
             ),
             (
@@ -279,7 +279,7 @@ impl ChuteUI {
 
 impl eframe::App for ChuteUI {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        ctx.set_pixels_per_point(1.3);
+        //ctx.set_pixels_per_point(1.3);
         egui::TopBottomPanel::top("app_top_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.visuals_mut().button_frame = false;
@@ -335,7 +335,6 @@ impl eframe::App for ChuteUI {
         ctx.input_mut(|i| {
             // Handle undo stuff
             self.undoer.feed_state(i.time, &self.designer);
-
             if i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::MAC_CMD, egui::Key::Z)) ||
                i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z)) {
                 if let Some(to_undo) = self.undoer.undo(&self.designer) {
