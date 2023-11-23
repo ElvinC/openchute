@@ -99,7 +99,7 @@ pub struct Widget3D {
 }
 
 impl Widget3D {
-    pub fn handle_triangle(&mut self, ui: &mut egui::Ui) {
+    pub fn handle_triangle(&mut self, ui: &mut egui::Ui, meshes: Option<Vec<CpuMesh>>) {
     
         egui::Frame::canvas(ui.style()).show(ui, |ui| {
             let (rect, response) =
@@ -120,7 +120,8 @@ impl Widget3D {
                             three_d.frame(
                                 FrameInput::new(&three_d.context, &info, painter),
                                 angle,
-                                angle_delta
+                                angle_delta,
+                                meshes.clone()
                             );
                         });
                     },
@@ -154,6 +155,9 @@ pub fn with_three_d<R>(gl: &std::sync::Arc<glow::Context>, f: impl FnOnce(&mut T
     })
 }
 
+pub fn rgb_to_srgba(rgb: &[f32; 3]) -> three_d::Srgba {
+    three_d::Srgba::new((rgb[0] * 255.0) as u8, (rgb[1] * 255.0) as u8, (rgb[2] * 255.0) as u8, 255)
+}
 
 ///
 /// Translates from egui input to three-d input
@@ -271,6 +275,7 @@ impl ThreeDApp {
         ];
         let indices = vec![1, 0, 2, 2, 0, 3, 3, 0, 1];
 
+        /*
         let mut cpu_mesh = CpuMesh {
             positions: Positions::F32(positions),
             colors: Some(colors),
@@ -345,7 +350,10 @@ impl ThreeDApp {
         cpu_mesh.colors = Some(new_colors);
 
         cpu_mesh.compute_normals();
-        
+         */
+        let mut des = crate::parachute::ChuteDesigner::default();
+        des.update_calculations();
+        let mut cpu_mesh = crate::parachute::ChuteDesigner::default().get_3d_data()[0].clone();
 
         // Construct a model, with a default color material, thereby transferring the mesh data to the GPU
         let model_old = Gm::new(Mesh::new(&context, &cpu_mesh), PhysicalMaterial::new_opaque(&context, &CpuMaterial {
@@ -385,7 +393,7 @@ impl ThreeDApp {
         }
     }
 
-    pub fn frame(&mut self, frame_input: FrameInput<'_>, angle: (f32, f32), angle_delta: (f32, f32)) -> Option<glow::Framebuffer> {
+    pub fn frame(&mut self, frame_input: FrameInput<'_>, angle: (f32, f32), angle_delta: (f32, f32), meshes: Option<Vec<CpuMesh>>) -> Option<glow::Framebuffer> {
         // Ensure the viewport matches the current window viewport which changes if the window is resized
         self.camera.set_viewport(frame_input.viewport);
         self.camera.rotate_around_with_fixed_up(&vec3(0.0, 0.0, 0.0), angle_delta.0 * 0.1, angle_delta.1 * 0.1);
@@ -393,6 +401,16 @@ impl ThreeDApp {
         // Set the current transformation of the triangle
         //self.model
         //    .set_transformation(Mat4::from_angle_x(radians(angle.1)) * Mat4::from_angle_y(radians(angle.0)));
+
+        // Update model
+        if let Some(meshes) = meshes {
+            if let Some(mesh) = meshes.get(0) {
+                self.model = Gm::new(Mesh::new(&self.context, mesh), PhysicalMaterial::new_opaque(&self.context, &CpuMaterial {
+                    albedo: Srgba::WHITE,
+                    ..Default::default()
+                }));
+            }
+        } 
 
         // Get the screen render target to be able to render something on the screen
         frame_input

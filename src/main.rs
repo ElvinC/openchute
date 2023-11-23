@@ -180,9 +180,12 @@ impl ChuteUI {
 
     fn design_tab(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
 
-
+        self.designer.update_calculations();
         ui.columns(2, |columns| {
             let mut ui = &mut columns[0];
+            /* 
+            
+            
             ui.horizontal(|ui| {
                 let name_label = ui.label("Your name: ");
                 ui.text_edit_singleline(&mut self.name)
@@ -212,6 +215,7 @@ impl ChuteUI {
             //let result = evalexpr::eval_float(&self.math_expression).unwrap_or(0.0);
     
             ui.label(format!("Result {}", result.unwrap_or(0.0)));
+            */
     
             self.designer.options_ui(ui, frame, self.state.use_imperial);
     
@@ -221,7 +225,7 @@ impl ChuteUI {
             
             self.designer.draw_cross_section(ui, frame);
 
-            self.renderer_3d.handle_triangle(ui);
+            self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));
 
         });
 

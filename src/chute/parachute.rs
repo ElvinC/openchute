@@ -57,6 +57,7 @@ pub struct ChuteSection {
     gores: u16,
     fabric: FabricSelector,
     seam_allowance: (f64, f64, f64, f64), // Right, top, left, bottom
+    colors: Vec<[f32; 3]>, // Colors. If less than number of gores, it continues repeating
 }
 
 impl ChuteSection {
@@ -66,6 +67,28 @@ impl ChuteSection {
         
         ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
         ui::integer_edit_field(ui, &mut self.gores);
+
+        ui.horizontal(|ui| {
+            ui.label("Color:");
+            if ui.button("➕").clicked() {
+                // Alternate between international orange and black
+                if self.colors.len() % 2 == 0 {
+                    self.colors.push([1.0, 0.31, 0.0]);
+                } else {
+                    self.colors.push([0.0, 0.0, 0.0]);
+                }
+            };
+
+            if ui.add_enabled(self.colors.len() > 0, egui::Button::new("➖")).clicked() {
+                self.colors.pop().unwrap_or_default();
+            }
+
+            for color in self.colors.iter_mut() {
+                ui.color_edit_button_rgb(color);
+            }
+        });
+
+
 
         let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
         
@@ -97,8 +120,23 @@ impl ChuteSection {
         }
     }
 
+    pub fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext) {
+        let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
+        match &mut self.section_type {
+            ChuteSectionType::Circular(sec) => {
+                sec.line.begin.x = eval(&sec.expressions[0]);
+                sec.line.begin.y = eval(&sec.expressions[1]);
+                sec.line.end.x = eval(&sec.expressions[2]);
+                sec.line.end.y = eval(&sec.expressions[3]);
+            },
+            ChuteSectionType::Polygonal(sec) => {
+                
+            }
+        }
+    }
+
     fn new_circular() -> Self {
-        Self { section_type: ChuteSectionType::Circular(CircularChuteSection::default()), gores: 8, fabric: FabricSelector::new(), seam_allowance: (0.01, 0.01, 0.01, 0.01) }
+        Self { section_type: ChuteSectionType::Circular(CircularChuteSection::default()), gores: 8, fabric: FabricSelector::new(), seam_allowance: (0.01, 0.01, 0.01, 0.01), colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]]}
     }
 
     fn get_cross_section(&self, resolution: u32) -> geometry::Points {
@@ -167,6 +205,7 @@ pub struct InputValue {
     pub value: f64,
     pub unit: StandardUnit,
     pub range: std::ops::RangeInclusive<f64>, // Range, given in SI base unit
+    pub default_value: f64,
 }
 
 // These are parameters that are computed using the InputValues. 
@@ -234,13 +273,14 @@ impl ChuteDesigner {
     pub fn options_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
         
         // Number of gores
+        /*
         ui::integer_edit_field(ui, &mut self.gores);
-
+        
         ui.checkbox(&mut self.use_global_seam_allowance, "Use global seam allowance");
 
         ui::dimension_field(ui, &mut self.diameter, use_imperial, 0.0..=10.0);
         ui::number_edit_field(ui, &mut self.diameter);
-
+        */
         ui.add_enabled(self.use_global_seam_allowance, egui::Slider::new::<f64>(&mut self.global_seam_allowance, 0.0..=5.0));
         ui.add_enabled(self.use_global_seam_allowance, egui::Checkbox::new(&mut false, "Cut corners of seam allowance"));
 
@@ -252,7 +292,14 @@ impl ChuteDesigner {
         });
 
         for (idx, input_value) in self.input_values.iter_mut().enumerate() {
-            ui.label(&input_value.id);
+            
+            ui.horizontal(|ui| {
+                ui.label(&input_value.id);
+                if !input_value.description.is_empty() {
+                    ui.button("❓").on_hover_text_at_pointer(&input_value.description);
+                }
+            });
+
             ui.horizontal(|ui| {
                 ui.label("Value:");
                 
@@ -264,8 +311,8 @@ impl ChuteDesigner {
                     StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
                 };
 
-                if !input_value.description.is_empty() {
-                    ui.button("❓").on_hover_text_at_pointer(&input_value.description);
+                if ui.add_enabled(input_value.value != input_value.default_value, egui::Button::new("↺")).clicked() {
+                    input_value.value = input_value.default_value;
                 }
 
             });
@@ -282,10 +329,16 @@ impl ChuteDesigner {
 
         let mut to_delete: Option<usize> = None;
 
-        for (num, step) in self.instructions.iter().enumerate() {
-            if ui.selectable_label(false, format!("{}: {}", num + 1, step)).clicked() {
-                to_delete = Some(num);
-            }
+        for (num, step) in self.instructions.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.button("❌").clicked() {
+                    to_delete = Some(num);
+                }
+                ui.label(format!("{}", num+1));
+                ui.separator();
+
+                ui.add(egui::TextEdit::multiline(step).desired_rows(1));
+            });
         }
 
         if let Some(delete_idx) = to_delete {
@@ -362,6 +415,43 @@ impl ChuteDesigner {
             ("deg".into(), PI / 180.0)]
     }
 
+    pub fn update_calculations(&mut self) {
+        // Call this in order to update the calculation context, only when not rendering geometry_ui
+
+        self.evaluator_context.clear_variables();
+        for (name, val) in ChuteDesigner::default_vars() {
+            self.evaluator_context.set_value(name, evalexpr::Value::Float(val)).unwrap();
+        }
+
+        for (idx, input_value) in self.input_values.iter_mut().enumerate() {
+            
+            if !evalexpr::Context::get_value(&self.evaluator_context, &input_value.id).is_some()
+                && ChuteDesigner::has_id_error(&input_value.id).is_none() {
+                self.evaluator_context.set_value(input_value.id.clone(), evalexpr::Value::Float(input_value.value)).unwrap_or_default(); 
+            }
+        }
+
+        for (idx, parameter) in self.parameter_values.iter_mut().enumerate() {
+    
+            if !evalexpr::Context::get_value(&self.evaluator_context, &parameter.id).is_some()
+                    && ChuteDesigner::has_id_error(&parameter.id).is_none() {
+
+                let computed = evalexpr::eval_number_with_context(&parameter.expression, &self.evaluator_context);
+                if computed.is_ok() {
+                    let value = computed.unwrap_or_default();
+
+                    self.evaluator_context.set_value(parameter.id.clone(), evalexpr::Value::Float(value));
+                }
+            }
+        }
+
+
+        for (idx, chute_section) in self.chute_sections.iter_mut().enumerate() {
+            chute_section.update_from_context(&self.evaluator_context);
+        }
+
+    }
+
     pub fn geometry_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
         // geometry stuff
 
@@ -378,7 +468,7 @@ impl ChuteDesigner {
             ui.separator();
     
             if ui.button("Add input").clicked() {
-                self.input_values.push(InputValue { description: "".into(), id: format!("input{}", self.input_values.len()+1), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0 })
+                self.input_values.push(InputValue { description: "".into(), id: format!("input{}", self.input_values.len()+1), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 1.0, default_value: 1.0})
             }
     
             let mut to_delete: Option<usize> = None;
@@ -438,6 +528,10 @@ impl ChuteDesigner {
                     ui::number_edit_field(ui, &mut start);
                     ui.label("to");
                     ui::number_edit_field(ui, &mut end);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Default value: ");
+                    ui::number_edit_field(ui, &mut input_value.default_value);
                 });
                 input_value.range = start ..= end;
     
@@ -500,7 +594,7 @@ impl ChuteDesigner {
                         ui.label(egui::RichText::new("Expression").strong());
                     });
                     header.col(|ui| {
-                        ui.label(egui::RichText::new("Result").strong());
+                        ui.label(egui::RichText::new("Result [si unit]").strong());
                     });
                 })
                 .body(|mut body| {
@@ -540,7 +634,7 @@ impl ChuteDesigner {
                                     let computed = evalexpr::eval_number_with_context(&parameter.expression, &self.evaluator_context);
                                     if computed.is_ok() {
                                         let value = computed.unwrap_or_default();
-                                        ui.label(format!("Result: {:}", (value * 100_000_000.0).round() / 100_000_000.0));
+                                        ui.label(format!("{:}", (value * 100_000_000.0).round() / 100_000_000.0));
                     
                                         self.evaluator_context.set_value(parameter.id.clone(), evalexpr::Value::Float(value));
                                     } else {
@@ -615,7 +709,7 @@ impl ChuteDesigner {
                 if idx > 0 && direction {
                     // Swap upwards
                     self.chute_sections.swap(idx, idx-1);
-                } else if idx < (self.parameter_values.len() - 1) && !direction{
+                } else if idx < (self.chute_sections.len() - 1) && !direction{
                     self.chute_sections.swap(idx, idx+1);
                 }
             }
@@ -651,8 +745,130 @@ impl ChuteDesigner {
         result
     }
 
-    pub fn get_3d_data(&self) {
-        todo!()
+    pub fn get_3d_data(&self) -> Vec<three_d::CpuMesh> {
+        // Go through and generate the correct colors and mesh for 3D rendering...
+        let mut result = vec![];
+
+        // Note: This generates the mesh every single time, without checking if it's identical to the last time.
+
+        // Save everything in one mesh
+        let mut triangle_indices: Vec<u32> = vec![];
+        let mut new_colors: Vec<three_d::Srgba> = vec![];
+        let mut chute_coords: Vec<three_d::Vector3<f32>> = vec![];
+
+        let mut idx_offset: u32 = 0;
+
+        for section in &self.chute_sections {
+            //let mut chute_cross = vec![];
+
+            let chute_cross = match &section.section_type {
+                ChuteSectionType::Circular(sec) => {
+                    sec.line.to_points(60)
+                }
+                ChuteSectionType::Polygonal(sec) => {
+                    todo!()
+                }
+            };
+
+            let mut chute_cross: Vec<three_d::Vector2<f32>> = chute_cross.points.iter().map(|pt| three_d::vec2(pt.x as f32, pt.y as f32)).collect();
+
+            let num_gores = section.gores as usize;
+
+            if num_gores == 0 {
+                // If zero
+                continue;
+            }
+
+
+            for idx in 0..num_gores {
+                let z_angle = idx as f32 / (num_gores as f32) * core::f32::consts::PI * 2.0;
+                let cos_sin = (z_angle.cos(), z_angle.sin());
+                // Append twice to allow per gore coloring
+                chute_coords.append(&mut chute_cross.iter().map(|&pt| three_d::vec3(pt.x * cos_sin.0, pt.y, pt.x * cos_sin.1) ).collect::<Vec<_>>());
+                chute_coords.append(&mut chute_cross.iter().map(|&pt| three_d::vec3(pt.x * cos_sin.0, pt.y, pt.x * cos_sin.1) ).collect::<Vec<_>>());
+            }
+
+
+            let num_points_per_gore = chute_cross.len();
+
+            // Generate triangles. 
+            for gore_idx in 0..num_gores {
+                // Each gore
+                for point_idx in 0..(num_points_per_gore-1) {
+                    // Each point on the left of that gore
+
+                    // Get four points forming a square
+                    let pt_left0 = ((gore_idx*2+1) * num_points_per_gore + point_idx) as u32;
+                    let pt_left1 = pt_left0 + 1;
+                    let pt_right0 = ((((gore_idx*2+1) + 1) % (num_gores * 2)) * num_points_per_gore + point_idx) as u32;
+                    let pt_right1 = pt_right0 + 1;
+                    
+                    // Two triangles forming a square
+                    // Order counterclockwise
+                    triangle_indices.append(&mut vec![pt_left0+idx_offset, pt_right0+idx_offset, pt_left1+idx_offset,
+                                                     pt_right0+idx_offset, pt_right1+idx_offset, pt_left1+idx_offset]);
+                }            
+            }
+
+
+            let color_map: Vec<three_d::Srgba> = if section.colors.is_empty() {
+                vec![three_d::Srgba::new(255, 79, 0, 255)]
+            } else {
+                section.colors.iter().map(|rgb| ui::rgb_to_srgba(rgb)).collect()
+            };
+
+            let num_colors = color_map.len();
+
+            for j in 0..num_points_per_gore {
+                new_colors.push(color_map.get(0).unwrap().clone());
+            }
+    
+            for gore_num in 0..(num_gores-1) {
+                for j in 0..num_points_per_gore {
+                    new_colors.push(color_map.get((gore_num + 1) % num_colors).unwrap().clone());
+                    new_colors.push(color_map.get((gore_num + 1) % num_colors).unwrap().clone());
+                }
+            }
+
+            for j in 0..num_points_per_gore {
+                new_colors.push(color_map.get(0).unwrap().clone());
+            }
+            
+            idx_offset = chute_coords.len() as u32;
+    
+            //for idx in 0..cpu_mesh.vertex_count() {
+            //    new_colors.push(Srgba::new((((idx % (5 * num_points_per_gore))/num_points_per_gore * 255) % 256) as u8 , 0 as u8, 0 as u8, 255))
+            //}
+
+        }
+
+        if chute_coords.is_empty() {
+
+            // If no geometry present, add a triangle
+            chute_coords.push(three_d::vec3(0.0, 0.0, 0.0));
+            chute_coords.push(three_d::vec3(0.0, 0.0, 0.0));
+            chute_coords.push(three_d::vec3(0.0, 0.0, 0.0));
+
+            new_colors.push(three_d::Srgba::new(0, 0, 0, 0));
+            new_colors.push(three_d::Srgba::new(0, 0, 0, 0));
+            new_colors.push(three_d::Srgba::new(0, 0, 0, 0));
+
+            triangle_indices.append(&mut vec![0, 1, 2]);
+        }
+
+        let mut cpu_mesh = three_d::CpuMesh {
+            positions: three_d::Positions::F32(chute_coords),
+            indices: three_d::Indices::U32(triangle_indices),
+            ..Default::default()
+        };
+
+        cpu_mesh.colors = Some(new_colors);
+    
+        cpu_mesh.compute_normals();
+        
+        result.push(cpu_mesh);
+
+        result
     }
 }
 
@@ -674,12 +890,12 @@ impl Default for ChuteDesigner {
 
         // TODO: make math functions work without prefix
 
-        let input1 = InputValue {description: "".into(), id: "input1".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
-        let input2 = InputValue {description: "".into(), id: "input2".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0};
+        let input1 = InputValue {description: "".into(), id: "input1".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0, default_value: 0.0};
+        let input2 = InputValue {description: "".into(), id: "input2".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0, default_value: 0.0};
 
-        let input3 = InputValue {description: "Parachute Diameter".into(), id: "diameter".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 1.0};
-        let input4 = InputValue {description: "height / diameter of parachute".into(), id: "height_ratio".into(), range: 0.0..=1.0, unit: StandardUnit::UnitLess, value: 0.7};
-        let input5 = InputValue {description: "vent_diameter / diameter of parachute".into(), id: "vent_ratio".into(), range: 0.0..=1.0, unit: StandardUnit::UnitLess, value: 0.2};
+        let input3 = InputValue {description: "Parachute Diameter".into(), id: "diameter".into(), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 1.0, default_value: 1.0};
+        let input4 = InputValue {description: "height / diameter of parachute".into(), id: "height_ratio".into(), range: 0.0..=1.0, unit: StandardUnit::UnitLess, value: 0.7, default_value: 0.7};
+        let input5 = InputValue {description: "vent_diameter / diameter of parachute".into(), id: "vent_ratio".into(), range: 0.0..=1.0, unit: StandardUnit::UnitLess, value: 0.2, default_value: 0.2};
 
 
         let param1 = ParameterValue {display_unit: StandardUnit::MeterFoot, id: "param1".into(), expression: "input1*2".into()};
