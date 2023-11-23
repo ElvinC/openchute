@@ -69,7 +69,7 @@ fn main() {
 #[derive(Default,PartialEq,Clone,Copy)]
 enum Tab {
     #[default] Design,
-    Simulation,
+    Geometry,
     Experiment,
 }
 
@@ -167,7 +167,7 @@ impl ChuteUI {
             ),
             (
                 "Geometry",
-                Tab::Simulation,
+                Tab::Geometry,
             ),
             (
                 "Experiment",
@@ -180,46 +180,57 @@ impl ChuteUI {
 
     fn design_tab(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
 
-        ui.horizontal(|ui| {
-            let name_label = ui.label("Your name: ");
-            ui.text_edit_singleline(&mut self.name)
-                .labelled_by(name_label.id);
+
+        ui.columns(2, |columns| {
+            let mut ui = &mut columns[0];
+            ui.horizontal(|ui| {
+                let name_label = ui.label("Your name: ");
+                ui.text_edit_singleline(&mut self.name)
+                    .labelled_by(name_label.id);
+            });
+    
+            egui::ComboBox::from_label("Select one!")
+                .selected_text(format!("{:?}", self.selected))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.selected, 0, "Elliptical");
+                    ui.selectable_value(&mut self.selected, 1, "Annular");
+                    ui.selectable_value(&mut self.selected, 2, "DGB");
+                    ui.selectable_value(&mut self.selected, 3, "Custom");
+                }
+            );
+    
+            ui.separator();
+
+            ui.text_edit_singleline(&mut self.math_expression);
+        
+            let result: Option<f64> = match evalexpr::eval_with_context(&self.math_expression, &self.context) {
+                Ok(evalexpr::Value::Float(val)) => Some(val),
+                Ok(evalexpr::Value::Int(val)) => Some(val as f64),
+                _ => None,
+            };
+            
+            //let result = evalexpr::eval_float(&self.math_expression).unwrap_or(0.0);
+    
+            ui.label(format!("Result {}", result.unwrap_or(0.0)));
+    
+            self.designer.options_ui(ui, frame, self.state.use_imperial);
+    
+            self.designer.instructions_ui(ui, frame);
+
+            ui = &mut columns[1];
+            
+            self.designer.draw_cross_section(ui, frame);
+
+            self.renderer_3d.handle_triangle(ui);
+
         });
 
-        egui::ComboBox::from_label("Select one!")
-            .selected_text(format!("{:?}", self.selected))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.selected, 0, "Elliptical");
-                ui.selectable_value(&mut self.selected, 1, "Annular");
-                ui.selectable_value(&mut self.selected, 2, "DGB");
-                ui.selectable_value(&mut self.selected, 3, "Custom");
-            }
-        );
-
-        ui.separator();
 
 
-        ui.text_edit_singleline(&mut self.math_expression);
-        
-        let result: Option<f64> = match evalexpr::eval_with_context(&self.math_expression, &self.context) {
-            Ok(evalexpr::Value::Float(val)) => Some(val),
-            Ok(evalexpr::Value::Int(val)) => Some(val as f64),
-            _ => None,
-        };
-        
-        //let result = evalexpr::eval_float(&self.math_expression).unwrap_or(0.0);
-
-        ui.label(format!("Result {}", result.unwrap_or(0.0)));
-
-        self.designer.options_ui(ui, frame, self.state.use_imperial);
-
-        self.designer.instructions_ui(ui, frame);
-
-        self.renderer_3d.handle_triangle(ui);
     }
 
-    fn simulation_tab(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.designer.simulation_ui(ui, frame, self.state.use_imperial);
+    fn geometry_tab(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.designer.geometry_ui(ui, frame, self.state.use_imperial);
     }
 
     fn experiment_tab(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -287,6 +298,13 @@ impl eframe::App for ChuteUI {
             });
         });
 
+        /*
+        egui::SidePanel::left("my_left_panel").resizable(true).show(ctx, |ui| {
+            ui.label("Hello World!");
+            ui.text_edit_singleline(&mut self.name);
+        });
+         */
+
         egui::CentralPanel::default().show(ctx, |ui| {
 
             egui::ScrollArea::vertical().id_source("scrollfirst")
@@ -306,7 +324,7 @@ impl eframe::App for ChuteUI {
                 } else {
                     match self.state.selected_tab {
                         Tab::Design => self.design_tab(ui, frame),
-                        Tab::Simulation => self.simulation_tab(ui, frame),
+                        Tab::Geometry => self.geometry_tab(ui, frame),
                         Tab::Experiment => self.experiment_tab(ui, frame),
                     }
                 }

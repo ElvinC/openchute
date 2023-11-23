@@ -262,14 +262,16 @@ impl ChuteDesigner {
                     StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
                     StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
                     StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
+                };
+
+                if !input_value.description.is_empty() {
+                    ui.button("❓").on_hover_text_at_pointer(&input_value.description);
                 }
 
             });
 
             ui.separator();
         }
-
-        self.draw_cross_section(ui, frame);
     }
 
     pub fn instructions_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -360,258 +362,273 @@ impl ChuteDesigner {
             ("deg".into(), PI / 180.0)]
     }
 
-    pub fn simulation_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
-        // Simulation stuff
+    pub fn geometry_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
+        // geometry stuff
 
         self.evaluator_context.clear_variables();
         for (name, val) in ChuteDesigner::default_vars() {
             self.evaluator_context.set_value(name, evalexpr::Value::Float(val)).unwrap();
         }
         
-        ui.heading("Input variables:");
-        ui.separator();
 
-        if ui.button("Add input").clicked() {
-            self.input_values.push(InputValue { description: "".into(), id: format!("input{}", self.input_values.len()+1), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0 })
-        }
+        ui.columns(2, |columns| {
+            let mut ui = &mut columns[0];
 
-        let mut to_delete: Option<usize> = None;
-        let mut to_move: Option<(usize, bool)> = None;
-        let num_parameters = self.input_values.len();
-
-        for (idx, input_value) in self.input_values.iter_mut().enumerate() {
-            
-            ui.horizontal(|ui| {
-                if ui.button("❌").clicked() {
-                    to_delete = Some(idx);
-                };
-                if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                    to_move = Some((idx, true));
-                }
-                if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                    to_move = Some((idx, false));
-                };
-            });
-            
-            ui.horizontal(|ui| {
-                ui.label("ID:");
-                ui.text_edit_singleline(&mut input_value.id);
-            });
-
-            egui::ComboBox::from_id_source(&input_value.id).width(200.0)
-            .selected_text(input_value.unit.get_general_name())
-            .show_ui(ui, |ui| {
-                for (_idx, option) in StandardUnit::get_options().iter().enumerate() {
-                    ui.selectable_value(&mut input_value.unit, option.clone(), option.get_general_name());
-                }
-            });
-
-
-            ui.horizontal(|ui| {
-                ui.label("Value:");
-                
-                match &input_value.unit {
-                    StandardUnit::UnitLess => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &unitless, &unitless),
-                    StandardUnit::MeterFoot => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::meter, &length::foot),
-                    StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
-                    StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
-                    StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
-                }                
-            });
-
-            // TODO: Add unit conversion selection
-            let mut start = *input_value.range.start();
-            let mut end = *input_value.range.end();
-
-            ui.horizontal(|ui| {
-                ui.label("Range: ");
-                ui::number_edit_field(ui, &mut start);
-                ui.label("to");
-                ui::number_edit_field(ui, &mut end);
-            });
-            input_value.range = start ..= end;
-
-            if evalexpr::Context::get_value(&self.evaluator_context, &input_value.id).is_some() {
-                ui.label("Error: Identifier already used");
+            ui.heading("Input variables:");
+            ui.separator();
+    
+            if ui.button("Add input").clicked() {
+                self.input_values.push(InputValue { description: "".into(), id: format!("input{}", self.input_values.len()+1), range: 0.0..=10.0, unit: StandardUnit::MeterFoot, value: 0.0 })
             }
-            else if let Some(msg) = ChuteDesigner::has_id_error(&input_value.id) {
-                ui.label(msg);
-            } else {
-                self.evaluator_context.set_value(input_value.id.clone(), evalexpr::Value::Float(input_value.value)).unwrap_or_else(|_| {
-                    ui.label("Unable to save value...");
+    
+            let mut to_delete: Option<usize> = None;
+            let mut to_move: Option<(usize, bool)> = None;
+            let num_parameters = self.input_values.len();
+    
+            for (idx, input_value) in self.input_values.iter_mut().enumerate() {
+                
+                ui.horizontal(|ui| {
+                    if ui.button("❌").clicked() {
+                        to_delete = Some(idx);
+                    };
+                    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
+                        to_move = Some((idx, true));
+                    }
+                    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
+                        to_move = Some((idx, false));
+                    };
+                });
+                
+                ui.horizontal(|ui| {
+                    ui.label("ID:");
+                    ui.text_edit_singleline(&mut input_value.id);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Description");
+                    ui.text_edit_singleline(&mut input_value.description);
+                });
+    
+                egui::ComboBox::from_id_source(&input_value.id).width(200.0)
+                .selected_text(input_value.unit.get_general_name())
+                .show_ui(ui, |ui| {
+                    for (_idx, option) in StandardUnit::get_options().iter().enumerate() {
+                        ui.selectable_value(&mut input_value.unit, option.clone(), option.get_general_name());
+                    }
+                });
+    
+    
+                ui.horizontal(|ui| {
+                    ui.label("Value:");
+                    
+                    match &input_value.unit {
+                        StandardUnit::UnitLess => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &unitless, &unitless),
+                        StandardUnit::MeterFoot => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::meter, &length::foot),
+                        StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
+                        StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
+                        StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
+                    }                
+                });
+    
+                // TODO: Add unit conversion selection
+                let mut start = *input_value.range.start();
+                let mut end = *input_value.range.end();
+    
+                ui.horizontal(|ui| {
+                    ui.label("Range: ");
+                    ui::number_edit_field(ui, &mut start);
+                    ui.label("to");
+                    ui::number_edit_field(ui, &mut end);
+                });
+                input_value.range = start ..= end;
+    
+                if evalexpr::Context::get_value(&self.evaluator_context, &input_value.id).is_some() {
+                    ui.label("Error: Identifier already used");
+                }
+                else if let Some(msg) = ChuteDesigner::has_id_error(&input_value.id) {
+                    ui.label(msg);
+                } else {
+                    self.evaluator_context.set_value(input_value.id.clone(), evalexpr::Value::Float(input_value.value)).unwrap_or_else(|_| {
+                        ui.label("Unable to save value...");
+                    })
+                }
+                ui.separator();
+            }
+    
+            if let Some((idx, direction)) = to_move {
+                if idx > 0 && direction {
+                    // Swap upwards
+                    self.input_values.swap(idx, idx-1);
+                } else if idx < (self.input_values.len() - 1) && !direction{
+                    self.input_values.swap(idx, idx+1);
+                }
+            }
+    
+            
+            if let Some(delete_idx) = to_delete {
+                self.input_values.remove(delete_idx);
+            }
+
+
+
+            ui.heading("Computed parameters");
+            if ui.button("Add parameter").clicked() {
+                self.parameter_values.push(ParameterValue {
+                    id: format!("param{}", self.parameter_values.len()+1),
+                    expression: "1.0*m+2.0*mm".into(),
+                    display_unit: StandardUnit::MeterFoot,
                 })
             }
-            ui.separator();
-        }
-
-        if let Some((idx, direction)) = to_move {
-            if idx > 0 && direction {
-                // Swap upwards
-                self.input_values.swap(idx, idx-1);
-            } else if idx < (self.input_values.len() - 1) && !direction{
-                self.input_values.swap(idx, idx+1);
-            }
-        }
-
-        
-        if let Some(delete_idx) = to_delete {
-            self.input_values.remove(delete_idx);
-        }
-
-
-        ui.heading("Computed parameters");
-        if ui.button("Add parameter").clicked() {
-            self.parameter_values.push(ParameterValue {
-                id: format!("param{}", self.parameter_values.len()+1),
-                expression: "1.0*m+2.0*mm".into(),
-                display_unit: StandardUnit::MeterFoot,
-            })
-        }
-
-        let mut to_delete: Option<usize> = None;
-        let mut to_move: Option<(usize, bool)> = None; // Option containing index and true if moving up and false if down
-
-        ui.push_id("paramtable", |ui| {
-            egui_extras::TableBuilder::new(ui)
-            .striped(true)
-            .column(egui_extras::Column::auto())
-            .column(egui_extras::Column::auto().at_least(60.0).resizable(true))
-            .column(egui_extras::Column::auto().at_least(120.0).resizable(true))
-            .column(egui_extras::Column::remainder())
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.label(egui::RichText::new("Edit").strong());
-                });
-                header.col(|ui| {
-                    ui.label(egui::RichText::new("ID").strong());
-                });
-                header.col(|ui| {
-                    ui.label(egui::RichText::new("Expression").strong());
-                });
-                header.col(|ui| {
-                    ui.label(egui::RichText::new("Result").strong());
-                });
-            })
-            .body(|mut body| {
-                let num_parameters = self.parameter_values.len();
-                for (idx, parameter) in self.parameter_values.iter_mut().enumerate() {
-
-
-                    body.row(20.0, |mut row| {
-                        row.col(|ui| {
-                            ui.horizontal(|ui| {
-                                if ui.button("❌").clicked() {
-                                    to_delete = Some(idx);
-                                };
-                                if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                                    to_move = Some((idx, true));
-                                }
-                                if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                                    to_move = Some((idx, false));
-                                };
-                            });
-                        });
-                        row.col(|ui| {
-                            ui.add(egui::TextEdit::singleline(&mut parameter.id).clip_text(false));
-                        });
-                        row.col(|ui| {
-                            ui.add(egui::TextEdit::singleline(&mut parameter.expression).clip_text(false));
-                        });
-                        row.col(|ui| {
-                            
-                            if evalexpr::Context::get_value(&self.evaluator_context, &parameter.id).is_some() {
-                                ui.label("Error: Identifier already used");
-                            }
-                            else if let Some(msg) = ChuteDesigner::has_id_error(&parameter.id) {
-                                ui.label(msg);
-                            }
-                            else {
-                                let computed = evalexpr::eval_number_with_context(&parameter.expression, &self.evaluator_context);
-                                if computed.is_ok() {
-                                    let value = computed.unwrap_or_default();
-                                    ui.label(format!("Result: {:}", (value * 100_000_000.0).round() / 100_000_000.0));
-                
-                                    self.evaluator_context.set_value(parameter.id.clone(), evalexpr::Value::Float(value));
-                                } else {
-                                    ui.label(format!("Error: {:?}", computed));
-                                }
-                            }
-                        });
-                        
+    
+            let mut to_delete: Option<usize> = None;
+            let mut to_move: Option<(usize, bool)> = None; // Option containing index and true if moving up and false if down
+    
+            ui.push_id("paramtable", |ui| {
+                egui_extras::TableBuilder::new(ui)
+                .striped(true)
+                .column(egui_extras::Column::auto())
+                .column(egui_extras::Column::auto().at_least(60.0).resizable(true))
+                .column(egui_extras::Column::auto().at_least(120.0).resizable(true))
+                .column(egui_extras::Column::remainder())
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.label(egui::RichText::new("Edit").strong());
                     });
-                }
-            });    
-        });
-
-
-        if let Some((idx, direction)) = to_move {
-            if idx > 0 && direction {
-                // Swap upwards
-                self.parameter_values.swap(idx, idx-1);
-            } else if idx < (self.parameter_values.len() - 1) && !direction{
-                self.parameter_values.swap(idx, idx+1);
-            }
-        }
-
-        if let Some(delete_idx) = to_delete {
-            self.parameter_values.remove(delete_idx);
-        }
-
-
-        ui.add(egui::Hyperlink::from_label_and_url("Info about builtin functions", "https://docs.rs/evalexpr/latest/evalexpr/#builtin-functions"));
-        
-        ui.separator();
-
-        ui.heading("Cross-section geometry");
-
-        ui.horizontal(|ui| {
-            if ui.button("Add polygonal geometry").clicked() {
-                todo!();
-            }
-            
-            if ui.button("Add circular band").clicked() {
-                self.chute_sections.push(ChuteSection::new_circular());
-            }
-        });
-
-
-        // Parachute section
-
-        let mut to_delete: Option<usize> = None;
-        let mut to_move: Option<(usize, bool)> = None; // Option containing index and true if moving up and false if down
-        let num_parameters = self.chute_sections.len();
-        for (idx, chute_section) in self.chute_sections.iter_mut().enumerate() {
-            ui.separator();
-            ui.horizontal(|ui| {
-                if ui.button("❌").clicked() {
-                    to_delete = Some(idx);
-                };
-                if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                    to_move = Some((idx, true));
-                }
-                if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                    to_move = Some((idx, false));
-                };
+                    header.col(|ui| {
+                        ui.label(egui::RichText::new("ID").strong());
+                    });
+                    header.col(|ui| {
+                        ui.label(egui::RichText::new("Expression").strong());
+                    });
+                    header.col(|ui| {
+                        ui.label(egui::RichText::new("Result").strong());
+                    });
+                })
+                .body(|mut body| {
+                    let num_parameters = self.parameter_values.len();
+                    for (idx, parameter) in self.parameter_values.iter_mut().enumerate() {
+    
+    
+                        body.row(20.0, |mut row| {
+                            row.col(|ui| {
+                                ui.horizontal(|ui| {
+                                    if ui.button("❌").clicked() {
+                                        to_delete = Some(idx);
+                                    };
+                                    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
+                                        to_move = Some((idx, true));
+                                    }
+                                    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
+                                        to_move = Some((idx, false));
+                                    };
+                                });
+                            });
+                            row.col(|ui| {
+                                ui.add(egui::TextEdit::singleline(&mut parameter.id).clip_text(false));
+                            });
+                            row.col(|ui| {
+                                ui.add(egui::TextEdit::singleline(&mut parameter.expression).clip_text(false));
+                            });
+                            row.col(|ui| {
+                                
+                                if evalexpr::Context::get_value(&self.evaluator_context, &parameter.id).is_some() {
+                                    ui.label("Error: Identifier already used");
+                                }
+                                else if let Some(msg) = ChuteDesigner::has_id_error(&parameter.id) {
+                                    ui.label(msg);
+                                }
+                                else {
+                                    let computed = evalexpr::eval_number_with_context(&parameter.expression, &self.evaluator_context);
+                                    if computed.is_ok() {
+                                        let value = computed.unwrap_or_default();
+                                        ui.label(format!("Result: {:}", (value * 100_000_000.0).round() / 100_000_000.0));
+                    
+                                        self.evaluator_context.set_value(parameter.id.clone(), evalexpr::Value::Float(value));
+                                    } else {
+                                        ui.label(format!("Error: {:?}", computed));
+                                    }
+                                }
+                            });
+                            
+                        });
+                    }
+                });    
             });
-            chute_section.ui(ui, frame, use_imperial, &self.evaluator_context, idx as u16);
-        }
-
-        if let Some((idx, direction)) = to_move {
-            if idx > 0 && direction {
-                // Swap upwards
-                self.chute_sections.swap(idx, idx-1);
-            } else if idx < (self.parameter_values.len() - 1) && !direction{
-                self.chute_sections.swap(idx, idx+1);
+    
+    
+            if let Some((idx, direction)) = to_move {
+                if idx > 0 && direction {
+                    // Swap upwards
+                    self.parameter_values.swap(idx, idx-1);
+                } else if idx < (self.parameter_values.len() - 1) && !direction{
+                    self.parameter_values.swap(idx, idx+1);
+                }
             }
-        }
+    
+            if let Some(delete_idx) = to_delete {
+                self.parameter_values.remove(delete_idx);
+            }
+    
+    
+            ui.add(egui::Hyperlink::from_label_and_url("Info about builtin functions", "https://docs.rs/evalexpr/latest/evalexpr/#builtin-functions"));
+            
+            ui.separator();
+    
+            ui = &mut columns[1];
+            
 
-        if let Some(delete_idx) = to_delete {
-            self.chute_sections.remove(delete_idx);
-        }
 
-        ui.separator();
+            ui.heading("Cross-section geometry");
 
-        self.draw_cross_section(ui, frame);
+            ui.horizontal(|ui| {
+                if ui.button("Add polygonal geometry").clicked() {
+                    todo!();
+                }
+                
+                if ui.button("Add circular band").clicked() {
+                    self.chute_sections.push(ChuteSection::new_circular());
+                }
+            });
+    
+    
+            // Parachute section
+    
+            let mut to_delete: Option<usize> = None;
+            let mut to_move: Option<(usize, bool)> = None; // Option containing index and true if moving up and false if down
+            let num_parameters = self.chute_sections.len();
+            for (idx, chute_section) in self.chute_sections.iter_mut().enumerate() {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("❌").clicked() {
+                        to_delete = Some(idx);
+                    };
+                    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
+                        to_move = Some((idx, true));
+                    }
+                    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
+                        to_move = Some((idx, false));
+                    };
+                });
+                chute_section.ui(ui, frame, use_imperial, &self.evaluator_context, idx as u16);
+            }
+    
+            if let Some((idx, direction)) = to_move {
+                if idx > 0 && direction {
+                    // Swap upwards
+                    self.chute_sections.swap(idx, idx-1);
+                } else if idx < (self.parameter_values.len() - 1) && !direction{
+                    self.chute_sections.swap(idx, idx+1);
+                }
+            }
+    
+            if let Some(delete_idx) = to_delete {
+                self.chute_sections.remove(delete_idx);
+            }
+    
+            ui.separator();
+    
+            self.draw_cross_section(ui, frame);
+
+        });
 
     }
 
