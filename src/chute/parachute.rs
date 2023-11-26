@@ -63,6 +63,7 @@ pub struct ChuteSection {
     gores: u16,
     fabric: FabricSelector,
     seam_allowance: (f64, f64, f64, f64), // Right, top, left, bottom
+    corner_cutout: bool,
     colors: Vec<[f32; 3]>, // Colors. If less than number of gores, it continues repeating
 }
 
@@ -82,6 +83,8 @@ impl ChuteSection {
             ui::length_slider(ui, &mut self.seam_allowance.1, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
             ui::length_slider(ui, &mut self.seam_allowance.3, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
         });
+
+        ui.checkbox(&mut self.corner_cutout, "Cut out seam allowance corners");
 
         ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
         ui::integer_edit_field(ui, &mut self.gores);
@@ -154,7 +157,7 @@ impl ChuteSection {
     }
 
     fn new_circular() -> Self {
-        Self { section_type: ChuteSectionType::Circular(CircularChuteSection::default()), gores: 8, fabric: FabricSelector::new(), seam_allowance: (0.01, 0.01, 0.01, 0.01), colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]]}
+        Self { section_type: ChuteSectionType::Circular(CircularChuteSection::default()), gores: 8, fabric: FabricSelector::new(), seam_allowance: (0.01, 0.01, 0.01, 0.01), colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]], corner_cutout: false}
     }
 
     fn get_cross_section(&self, resolution: u32) -> geometry::Points {
@@ -174,7 +177,7 @@ impl ChuteSection {
             ChuteSectionType::Circular(circ) => {
                 // Generate flat piece that can be folded into cone section/cylinder/disk
                 let mut piece = PatternPiece::new();
-
+                piece.set_corner_cutout(self.corner_cutout);
                 let pt1 = circ.line.begin;
                 let pt2 = circ.line.end;
 
@@ -212,8 +215,7 @@ impl ChuteSection {
                     // Bottom segment
                     piece.add_segment(Segment::from_vec(vec![bottom_left, bottom_right], self.seam_allowance.3));
 
-                    return piece;
-                    
+                    return piece;                    
                 }
 
                 
@@ -1243,6 +1245,10 @@ impl PatternPiece {
         self.segments.push(seg);
     }
 
+    fn set_corner_cutout(&mut self, cutout: bool) {
+        self.corner_cutout = cutout;
+    }
+
     fn compute(&mut self) {
         // Compute seam allowances etc
         self.computed_points = vec![];
@@ -1291,7 +1297,7 @@ impl PatternPiece {
                 // Corner is first point in segment
                 let is_corner = idx == 0;
                 
-                if is_corner && seg_idx != 0{
+                if is_corner && seg_idx != 0 {
                     allowance_prev = allowance_next;
                     allowance_next = seg.seam_allowance;
                 }
@@ -1366,6 +1372,10 @@ impl PatternPiece {
                 allowance_prev = allowance_next;
 
             }   
+        }
+
+        if let Some(first_pt) = self.computed_points.first() {
+            self.computed_points.push(first_pt.clone()); // wrap around
         }
     }
 
