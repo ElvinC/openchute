@@ -71,6 +71,18 @@ impl ChuteSection {
         ui.label("Fabric:");
         self.fabric.ui(ui, frame, use_imperial, index_id);
         
+        // Seam allowance input
+        ui.label("Seam allowance (right, left)");
+        ui.horizontal(|ui| {
+            ui::length_slider(ui, &mut self.seam_allowance.0, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+            ui::length_slider(ui, &mut self.seam_allowance.2, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+        });
+        ui.label("Seam allowance (top, bottom)");
+        ui.horizontal(|ui| {
+            ui::length_slider(ui, &mut self.seam_allowance.1, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+            ui::length_slider(ui, &mut self.seam_allowance.3, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+        });
+
         ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
         ui::integer_edit_field(ui, &mut self.gores);
 
@@ -174,7 +186,7 @@ impl ChuteSection {
                 // PT2 is "outer" one
 
                 let distance = (pt1 - pt2).norm(); // band size of the half circle
-                if distance < 1e-6 {
+                if distance < 1e-6 || self.gores == 0 {
                     // Empty pattern piece
                     return piece;
                 } else if (pt2.x - pt1.x).abs() < 1e-6 {
@@ -310,7 +322,7 @@ impl ChuteSection {
                     piece.add_segment(Segment::from_vec(inner_points, self.seam_allowance.1));
 
                     // Connecting piece, left side
-                    piece.add_segment(Segment::from_vec(vec![end_inner, start_outer], self.seam_allowance.0));
+                    piece.add_segment(Segment::from_vec(vec![end_inner, start_outer], self.seam_allowance.2));
 
                     // todo: flip seam allowance when when segment points "inwards"
                     return piece;
@@ -1212,6 +1224,7 @@ pub struct PatternPiece {
     fabric_area: f64, // Area in mm2, includes seam allowances
     chute_area: f64, // Area in mm2, not including seam allowances
     count: u16, // Number of duplicate pattern pieces
+    corner_cutout: bool,
     name: String,
 }
 
@@ -1223,7 +1236,7 @@ pub struct PatternPiece {
 // Edge joining two segments is given seam allowance of previous segment
 impl PatternPiece {
     fn new() -> PatternPiece {
-        Self { segments: vec![], points: vec![], computed_points: vec![], fabric_area: 0.0, chute_area: 0.0, name: "pattern".into(), count: 1}
+        Self { segments: vec![], points: vec![], computed_points: vec![], fabric_area: 0.0, chute_area: 0.0, name: "pattern".into(), count: 1, corner_cutout: true}
     }
 
     fn add_segment(&mut self, seg: Segment) {
@@ -1234,9 +1247,125 @@ impl PatternPiece {
         // Compute seam allowances etc
         self.computed_points = vec![];
         self.points = vec![];
-        for seg in self.segments.iter() {
-            self.points.append(&mut seg.points.clone());
-            self.computed_points.append(&mut seg.points.clone()); // todo: Add seam computation here
+
+
+        // only process non_empty segments
+        let mut segments = vec![];
+
+        for seg in &self.segments {
+            if !seg.points.is_empty() {
+                segments.push(seg.clone());
+            }
+        }
+
+        if segments.is_empty() {
+            return;
+        }
+
+        for idx in 1..=segments.len() {
+            // Delete last point in segment until it's unique
+            
+            let idx_this = idx % segments.len();
+            let idx_next = (idx + 1) % segments.len();
+
+            let next_start = segments[idx_next].points.first().unwrap_or(&vec2(f64::NAN, f64::NAN)).clone();
+
+            while segments[idx_this].points.last().is_some_and(|pt| (pt - next_start).norm_squared() < 1e-6) {
+                segments[idx_this].points.pop();
+            }
+        }
+
+        // Remove empty segments again
+        segments.retain(|seg| !seg.points.is_empty());
+
+        let mut allowance_prev = segments.last().unwrap().seam_allowance;
+        let mut allowance_next = segments.first().unwrap().seam_allowance;
+
+        let mut prev_pt = segments.last().unwrap().points.last().unwrap().clone(); // final point
+
+        for (seg_idx, seg) in segments.iter().enumerate() {
+            self.points.append(&mut seg.points.clone()); // Base shape without seam allowance
+            let seg_idx_next = (seg_idx + 1) % segments.len();
+
+            for idx in 0..seg.points.len() {
+                // Corner is first point in segment
+                let is_corner = idx == 0;
+                
+                if is_corner && seg_idx != 0{
+                    allowance_prev = allowance_next;
+                    allowance_next = seg.seam_allowance;
+                }
+
+                let p0 = prev_pt;
+                let p1 = seg.get_point(idx);
+                let p2 = if idx < (seg.points.len() - 1) { seg.get_point(idx + 1) } else { segments.get(seg_idx_next).unwrap().get_first_point() };
+                prev_pt = p1;
+                //println!("points: {:?}, {:?}, {:?}", p0, p1, p2);
+
+                // Based on https://stackoverflow.com/questions/3749678/expand-fill-of-convex-polygon
+                let v01 = p1 - p0;
+                let v12 = p2 - p1;
+
+                let v01_norm = v01.norm();
+                let v12_norm = v12.norm();
+
+                // Rotate clockwise and normalise
+                let n01 = vec2(v01.y, -v01.x) / v01_norm;
+                let n12 = vec2(v12.y, -v12.x) / v12_norm;
+
+                let d = v12.dot(&n01);
+
+                if v01_norm < 1e-6 && v12_norm < 1e-6 {
+                    // All points are at the same position
+                    self.computed_points.push(p0);
+                }
+                else if d.abs() < 1e-6 || v01_norm < 1e-6 || v12_norm < 1e-6 {
+                    // Line is parallel, just offset with n01 with average offset
+
+                    let used_norm = if v01_norm < 1e-6 { n12 } else { n01 };
+
+                    let p0_offset_prev = p0 + used_norm * allowance_prev;
+                    let p0_offset_next = p0 + used_norm * allowance_next;
+
+                    if self.corner_cutout {
+                        // Add both points
+                        self.computed_points.push(p0_offset_prev);
+                        self.computed_points.push(p0_offset_next);
+                    } else {
+                        // Average
+                        self.computed_points.push((p0_offset_prev + p0_offset_next) * 0.5);
+                    }
+                } else {
+                    // Add to original points to define line
+                    let p0_offset_prev = p0 + n01 * allowance_prev;
+                    let p1_offset_prev = p1 + n01 * allowance_prev;
+                    let p1_offset_next = p1 + n12 * allowance_next;
+                    let p2_offset_next = p2 + n12 * allowance_next;
+
+                    // Find intersection
+                    if self.corner_cutout && (is_corner) {
+                        // Make corner cutout
+                        self.computed_points.push(p1_offset_prev);
+                        self.computed_points.push(p1);
+                        self.computed_points.push(p1_offset_next);
+                    } else {
+                        let a1 = p1_offset_prev.x - p0_offset_prev.x;
+                        let b1 = p1_offset_next.x - p2_offset_next.x;
+                        let c1 = p1_offset_next.x - p0_offset_prev.x;
+    
+                        let a2 = p1_offset_prev.y - p0_offset_prev.y;
+                        let b2 = p1_offset_next.y - p2_offset_next.y;
+                        let c2 = p1_offset_next.y - p0_offset_prev.y;
+
+                        let t = (b1*c2 - b2*c1) / (a2*b1 - a1*b2);
+
+                        let new_pt = vec2(p0_offset_prev.x + t * (p1_offset_prev.x - p0_offset_prev.x), p0_offset_prev.y + t * (p1_offset_prev.y - p0_offset_prev.y));
+                        self.computed_points.push(new_pt);           
+                    }
+                }
+                allowance_prev = allowance_next;
+
+            }   
         }
     }
 
@@ -1436,7 +1565,7 @@ impl Default for FabricSelector {
 
 #[cfg(test)]
 mod tests {
-    use crate::chute::parachute::{Segment, PatternPiece};
+    use crate::chute::parachute::{Segment, PatternPiece, ChuteSection};
     extern crate nalgebra as na;
 
     #[test]
@@ -1479,5 +1608,17 @@ mod tests {
         pat.compute();
 
         assert_eq!(pat.get_area(false), 1.0 * 4.0 * 0.5)
+    }
+
+    #[test]
+    fn test_seam_allowance() {
+        let section = ChuteSection::new_circular();
+        let mut pat = section.to_pattern_piece(20);
+
+        pat.corner_cutout = false;
+        pat.compute();
+
+        println!("{:?}", pat.computed_points);
+
     }
 }
