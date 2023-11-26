@@ -24,6 +24,11 @@ use uom::si::{self, length};
 
 use super::geometry::ToPoints;
 
+// helper functions
+fn vec2(x: f64, y: f64) -> na::Vector2<f64> {
+    na::Vector2::new(x,y)
+}
+
 // Represents a band. Can contain multiple geometries representing the cross section, but is symmetrical and has a fixed number of gores
 #[derive(Clone)]
 pub struct PolygonalChuteSection {
@@ -44,6 +49,7 @@ impl Default for CircularChuteSection {
         }
     }
 }
+
 
 #[derive(Clone)]
 pub enum ChuteSectionType {
@@ -97,15 +103,15 @@ impl ChuteSection {
                 ui.label("Start point:");
 
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut sec.expressions[0]);
-                    ui.text_edit_singleline(&mut sec.expressions[1]);
+                    ui.add(egui::TextEdit::singleline(&mut sec.expressions[0]).clip_text(false).desired_width(200.0));
+                    ui.add(egui::TextEdit::singleline(&mut sec.expressions[1]).clip_text(false).desired_width(200.0));
                 });
 
                 ui.label("End point:");
 
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut sec.expressions[2]);
-                    ui.text_edit_singleline(&mut sec.expressions[3]);
+                    ui.add(egui::TextEdit::singleline(&mut sec.expressions[2]).clip_text(false).desired_width(200.0));
+                    ui.add(egui::TextEdit::singleline(&mut sec.expressions[3]).clip_text(false).desired_width(200.0));
                 });
 
                 sec.line.begin.x = eval(&sec.expressions[0]);
@@ -151,7 +157,171 @@ impl ChuteSection {
         }
     }
 
-    fn get_gore() {
+    fn to_pattern_piece(&self, resolution: u32) -> PatternPiece {
+        match &self.section_type {
+            ChuteSectionType::Circular(circ) => {
+                // Generate flat piece that can be folded into cone section/cylinder/disk
+                let mut piece = PatternPiece::new();
+
+                let pt1 = circ.line.begin;
+                let pt2 = circ.line.end;
+
+                let (pt1, pt2) = if circ.line.end.x >= circ.line.begin.x {
+                    (circ.line.begin, circ.line.end)
+                } else {
+                    (circ.line.end, circ.line.begin)
+                };
+                // PT2 is "outer" one
+
+                let distance = (pt1 - pt2).norm(); // band size of the half circle
+                if distance < 1e-6 {
+                    // Empty pattern piece
+                    return piece;
+                } else if (pt2.x - pt1.x).abs() < 1e-6 {
+                    // Vertical band. Just generate a rectangle. Bottom of rectangle = towards parachute skirt
+                    // Center horizontally.
+                    // Start vertically at y=0
+                    let pos_x = pt1.x * 2.0 * PI/(self.gores as f64)/2.0; // x coord
+                    let pos_y = (pt1.y - pt2.y).abs(); // y coord
+
+                    let bottom_left = vec2(-pos_x, 0.0);
+                    let bottom_right = vec2(pos_x, 0.0);
+                    let top_left = vec2(-pos_x, pos_y);
+                    let top_right = vec2(pos_x, pos_y);
+
+                    // Define segments clockwise to make seams work correctly
+
+                    // Right segment
+                    piece.add_segment(Segment::from_vec(vec![bottom_right, top_right], self.seam_allowance.0));
+                    // Top segment
+                    piece.add_segment(Segment::from_vec(vec![top_right, top_left], self.seam_allowance.1));
+                    // Left segment
+                    piece.add_segment(Segment::from_vec(vec![top_left, bottom_left], self.seam_allowance.2));
+                    // Bottom segment
+                    piece.add_segment(Segment::from_vec(vec![bottom_left, bottom_right], self.seam_allowance.3));
+
+                    return piece;
+                    
+                }
+
+                
+                let y_intersect = -pt1.x * ((pt2.y - pt1.y)/(pt2.x - pt1.x));
+                let inner_radius = (pt1.x.powi(2) + y_intersect.powi(2)).sqrt();
+                let outer_radius = distance + inner_radius;
+
+                let angle = (pt2.x)/(outer_radius) * 2.0 * PI / self.gores as f64;
+
+
+                // Different cases. If top seam allowance is greater than top radius, or inner_radius is zero:
+                if angle >= 1.999 * PI && inner_radius <= self.seam_allowance.1 {
+                    // Make full circle, no inner cutout
+
+                    let num_steps = resolution as usize;
+
+                    let mut outer_points = vec![];
+            
+                    for idx in 0..=num_steps {
+                        let angle = (idx as f64 / num_steps as f64) * 2.0 * PI;
+                        outer_points.push(vec2(angle.cos() * outer_radius, angle.sin()*outer_radius));
+                    }
+
+                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3)); // Bottom seam allowance
+                    return piece;
+            
+                } else if angle >= 1.999 * PI {
+                    // Make full circle, with inner cutout
+
+                    let num_steps = resolution as usize;
+
+                    let mut outer_points = vec![];
+            
+                    for idx in 0..=num_steps {
+                        let angle = (idx as f64 / num_steps as f64) * 2.0 * PI;
+                        outer_points.push(vec2(angle.cos() * outer_radius, angle.sin()*outer_radius));
+                    }
+
+                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3)); // Bottom seam allowance
+                    // TODO: add inner cutout
+                    
+                    return piece;
+
+                } else if inner_radius <= self.seam_allowance.1 {
+                    // fraction of circle, no inner cutout
+                    // Bottom at x axis
+                    let start = -angle/2.0 - PI / 2.0;
+                    let stop = start + angle;
+                    let diff = stop - start;
+                    let num_steps = ((diff / (2.0 * PI) * (resolution as f64)) as usize).max(2);
+            
+                    let mut outer_points = vec![];
+                    for idx in 0..=num_steps {
+                        let angle = start + (idx as f64 / num_steps as f64) * diff;
+                        let cos_sin = (angle.cos(), angle.sin());
+                        outer_points.push(vec2(cos_sin.0 * outer_radius, cos_sin.1 * outer_radius + outer_radius));
+                    }
+
+                    // Outer segment
+                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3));
+
+
+                    let start_outer = vec2(start.cos() * outer_radius, start.sin() * outer_radius + outer_radius);
+                    let end_outer = vec2(stop.cos() * outer_radius, stop.sin() * outer_radius + outer_radius);
+                    let inner = vec2(0.0, 0.0 + outer_radius);
+                    // Connecting point, right side
+                    piece.add_segment(Segment::from_vec(vec![end_outer, inner], self.seam_allowance.0));
+
+                    // Connecting piece, left side
+                    piece.add_segment(Segment::from_vec(vec![inner, start_outer], self.seam_allowance.2));
+
+                    // todo: flip seam allowance when when segment points "inwards"
+                    return piece;
+                } else {
+                    // Make fraction of a circle, with inner cutout
+                    let start = -angle/2.0 - PI / 2.0;
+                    let stop = start + angle;
+                    let diff = stop - start;
+                    let num_steps = ((diff / (2.0 * PI) * (resolution as f64)) as usize).max(2);
+            
+                    let mut outer_points = vec![];
+                    let mut inner_points = vec![];
+            
+                    for idx in 0..=num_steps {
+                        let angle = start + (idx as f64 / num_steps as f64) * diff;
+                        let cos_sin = (angle.cos(), angle.sin());
+                        outer_points.push(vec2(cos_sin.0 * outer_radius, cos_sin.1 * outer_radius + outer_radius));
+                        inner_points.push(vec2(cos_sin.0 * inner_radius, cos_sin.1 * inner_radius + outer_radius))
+                    }
+
+                    inner_points.reverse(); // Reverse inner to keep clockwise ordering
+
+                    // Outer segment
+                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3));
+
+
+                    let start_outer = vec2(start.cos() * outer_radius, start.sin() * outer_radius + outer_radius);
+                    let end_outer = vec2(stop.cos() * outer_radius, stop.sin() * outer_radius + outer_radius);
+                    let start_inner = vec2(stop.cos() * inner_radius, stop.sin() * inner_radius + outer_radius);
+                    let end_inner = vec2(start.cos() * inner_radius, start.sin() * inner_radius + outer_radius);
+
+                    // Connecting point, right side
+                    piece.add_segment(Segment::from_vec(vec![end_outer, start_inner], self.seam_allowance.0));
+
+                    // Inner curve, top side
+                    piece.add_segment(Segment::from_vec(inner_points, self.seam_allowance.1));
+
+                    // Connecting piece, left side
+                    piece.add_segment(Segment::from_vec(vec![end_inner, start_outer], self.seam_allowance.0));
+
+                    // todo: flip seam allowance when when segment points "inwards"
+                    return piece;
+                }
+            },
+            ChuteSectionType::Polygonal(poly) => {
+                todo!()
+            }
+        }
+
+        PatternPiece::new()
     }
 
     fn get_3d_model() {
@@ -347,26 +517,18 @@ impl ChuteDesigner {
     }
 
     pub fn draw_cross_section(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        // Generate points
-        /* 
-        let cross = geometry::Points::from_vec((0..80).map(|ang| {
-            na::Vector2::new((ang as f64 * PI/180.0).cos() * self.diameter * 0.5,(ang as f64 * PI/180.0).sin() * 0.7 * self.diameter * 0.5)
-        }).collect());
-
-        let cross1 = geometry::Points::from_vec((0..80).map(|ang| {
-            na::Vector2::new(-(ang as f64 * PI/180.0).cos() * self.diameter * 0.5,(ang as f64 * PI/180.0).sin() * 0.7 * self.diameter * 0.5)
-        }).collect());
-
-        */
-
-        //let lines = vec![cross, cross1];
         let mut lines = self.get_cross_section();
         lines.append(&mut self.get_cross_section().iter().map(|p| p.mirror_x()).collect());
 
-        self.equal_aspect_plot(ui, frame, &lines, Some(1));
+        self.equal_aspect_plot(ui, frame, &lines, Some(0), "cross_section".into());
     }
 
-    pub fn equal_aspect_plot(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, data: &Vec<geometry::Points>, highlighted: Option<u16>) {
+    pub fn draw_gores(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let mut lines = self.get_gores();
+        self.equal_aspect_plot(ui, frame, &lines, Some(0), "gore_plot".into());
+    }
+
+    pub fn equal_aspect_plot(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, data: &Vec<geometry::Points>, highlighted: Option<u16>, id: String) {
         let mut lines = vec![];
 
         for (idx,line) in data.iter().enumerate() {
@@ -377,7 +539,7 @@ impl ChuteDesigner {
             lines.push(this_line);
         }
 
-        egui_plot::Plot::new("cross_section").height(300.0).data_aspect(1.0).view_aspect(1.5).auto_bounds_x().auto_bounds_y().show(ui, |plot_ui| {
+        egui_plot::Plot::new(id).height(300.0).data_aspect(1.0).view_aspect(1.5).auto_bounds_x().auto_bounds_y().show(ui, |plot_ui| {
             for line in lines {
                 plot_ui.line(line);
             }
@@ -722,6 +884,8 @@ impl ChuteDesigner {
     
             self.draw_cross_section(ui, frame);
 
+            self.draw_gores(ui, frame);
+
         });
 
     }
@@ -740,6 +904,18 @@ impl ChuteDesigner {
         for chute_section in &self.chute_sections {
             // use relatively low resolution at 30 points
             result.push(chute_section.get_cross_section(30));
+        }
+
+        result
+    }
+
+    pub fn get_gores(&self) -> Vec<geometry::Points> {
+        let mut result = vec![];
+
+        for chute_section in &self.chute_sections {
+            let mut piece = chute_section.to_pattern_piece(80);
+            piece.compute();
+            result.push( geometry::Points::from_vec(piece.computed_points));
         }
 
         result
@@ -964,13 +1140,17 @@ fn example_write_dxf() -> Result<(), Box<dyn std::error::Error>> {
 // All dimensions given in mm
 #[derive(Clone, Debug)]
 struct Segment {
-    points: Vec<na::Point2<f64>>,
+    points: Vec<na::Vector2<f64>>,
     seam_allowance: f64,
 }
 
 impl Segment {
     fn new() -> Self {
         Self { points: vec![], seam_allowance: 0.0 }
+    }
+
+    fn from_vec(points: Vec<na::Vector2<f64>>, seam_allowance: f64) -> Self {
+        Self { points: points, seam_allowance: seam_allowance }
     }
 
     fn new_with_allowance(seam_allowance: f64) -> Self {
@@ -981,12 +1161,12 @@ impl Segment {
         self.seam_allowance = seam_allowance;
     }
 
-    fn add_point(&mut self, point: na::Point2<f64>) {
+    fn add_point(&mut self, point: na::Vector2<f64>) {
         self.points.push(point);
     }
 
     fn add_point_xy(&mut self, x: f64, y: f64) {
-        self.points.push(na::Point2::new(x, y));
+        self.points.push(na::Vector2::new(x, y));
     }
 
     fn mirror_x(&self) -> Self {
@@ -1012,25 +1192,26 @@ impl Segment {
         }
     }
 
-    fn get_point(&self, idx: usize) -> na::Point2<f64> {
+    fn get_point(&self, idx: usize) -> na::Vector2<f64> {
         self.points[idx].clone()
     }
 
-    fn get_first_point(&self) -> na::Point2<f64> {
+    fn get_first_point(&self) -> na::Vector2<f64> {
         self.points.first().unwrap().clone()
     }
 
-    fn get_last_point(&self) -> na::Point2<f64> {
+    fn get_last_point(&self) -> na::Vector2<f64> {
         self.points.last().unwrap().clone()
     }
 }
 
-struct PatternPiece {
+pub struct PatternPiece {
     segments: Vec<Segment>,
-    points: Vec<na::Point2<f64>>, // Points not including seams
-    computed_points: Vec<na::Point2<f64>>, // Final points including seams
+    points: Vec<na::Vector2<f64>>, // Points not including seams
+    computed_points: Vec<na::Vector2<f64>>, // Final points including seams
     fabric_area: f64, // Area in mm2, includes seam allowances
     chute_area: f64, // Area in mm2, not including seam allowances
+    count: u16, // Number of duplicate pattern pieces
     name: String,
 }
 
@@ -1042,7 +1223,7 @@ struct PatternPiece {
 // Edge joining two segments is given seam allowance of previous segment
 impl PatternPiece {
     fn new() -> PatternPiece {
-        Self { segments: vec![], points: vec![], computed_points: vec![], fabric_area: 0.0, chute_area: 0.0, name: "pattern".into() }
+        Self { segments: vec![], points: vec![], computed_points: vec![], fabric_area: 0.0, chute_area: 0.0, name: "pattern".into(), count: 1}
     }
 
     fn add_segment(&mut self, seg: Segment) {
@@ -1102,7 +1283,7 @@ impl PatternPiece {
 }
 
 struct PatternPieceCollection {
-    pieces: Vec<(PatternPiece, u32)>, // Pattern piece and number of each
+    pieces: Vec<PatternPiece>, // Pattern piece and number of each
 }
 
 impl PatternPieceCollection {
@@ -1113,8 +1294,8 @@ impl PatternPieceCollection {
     fn get_area(&self, including_seams: bool) -> f64 {
         let mut total_area = 0.0;
 
-        for (piece, count) in self.pieces.iter() {
-            total_area += piece.get_area(including_seams) * (*count as f64);
+        for piece in self.pieces.iter() {
+            total_area += piece.get_area(including_seams) * (piece.count as f64);
         }
 
         total_area
@@ -1279,10 +1460,10 @@ mod tests {
 
         println!("{:?}", seg);
         seg.mirror_x();
-        assert_eq!(seg.points[1], na::Point2::new(-1.0, 2.0));
+        assert_eq!(seg.points[1], na::Vector2::new(-1.0, 2.0));
         println!("{:?}", seg);
         seg.scale(2.0, 3.0);
-        assert_eq!(seg.points[1], na::Point2::new(-2.0, 6.0));
+        assert_eq!(seg.points[1], na::Vector2::new(-2.0, 6.0));
     }
 
     #[test]

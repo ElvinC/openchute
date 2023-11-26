@@ -225,6 +225,7 @@ impl ChuteUI {
             
             self.designer.draw_cross_section(ui, frame);
 
+            // TODO: Make it only update when underlying data changes
             self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));
 
         });
