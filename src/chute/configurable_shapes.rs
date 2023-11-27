@@ -8,6 +8,7 @@ use super::geometry;
 // Can be used to set options
 pub trait ConfigurableGeometry: geometry::ToPoints {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext);
+    fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext);
 }
 
 #[derive(Clone)]
@@ -33,7 +34,7 @@ impl ToPoints for ConfigurableLine {
 
 impl ConfigurableGeometry for ConfigurableLine {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext) {
-        let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
+        
 
         ui.label("Start point:");
 
@@ -48,6 +49,12 @@ impl ConfigurableGeometry for ConfigurableLine {
             ui.add(egui::TextEdit::singleline(&mut self.expressions[2]).clip_text(false).desired_width(200.0));
             ui.add(egui::TextEdit::singleline(&mut self.expressions[3]).clip_text(false).desired_width(200.0));
         });
+
+        self.update_from_context(evaluator_context);
+    }
+
+    fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext) {
+        let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
 
         self.line.begin.x = eval(&self.expressions[0]);
         self.line.begin.y = eval(&self.expressions[1]);
@@ -75,7 +82,6 @@ impl ToPoints for ConfigurableEllipse {
 
 impl ConfigurableGeometry for ConfigurableEllipse {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext) {
-        let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
 
         ui.label("Angle start-stop:");
         ui.horizontal(|ui| {
@@ -98,7 +104,11 @@ impl ConfigurableGeometry for ConfigurableEllipse {
         ui.label("Rotation: ");
         ui.add(egui::TextEdit::singleline(&mut self.rotation).clip_text(false).desired_width(200.0));
 
+        self.update_from_context(evaluator_context);
+    }
 
+    fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext) {
+        let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
         self.ellipse.start_angle = eval(&self.start_angle);
         self.ellipse.stop_angle = eval(&self.stop_angle);
         self.ellipse.rotation = eval(&self.rotation);
@@ -114,7 +124,7 @@ impl ConfigurableEllipse {
         Self {
             ellipse: geometry::EllipseArc::circle(1.0, vec2(0.0, 0.0)),
             start_angle: "0.0".into(),
-            stop_angle: "2.0 * pi".into(),
+            stop_angle: "0.5 * pi".into(),
             rotation: "0.0".into(),
             radius_x: "1.0".into(),
             radius_y: "1.0".into(), 

@@ -21,6 +21,12 @@ fn polygon_cicumference_ratio(n: u16) -> f64 {
 	return edge_length * n as f64
 }
 
+// Get the distance between the center and the side of a polygon, with a distance between the center and a corner of 1.
+pub fn polygon_center_to_side(n: u16) -> f64 {
+    let angle = 2.0 * PI / n as f64;
+    (angle/2.0).cos()
+}
+
 pub fn vec2(x: f64, y: f64) -> Vector2<f64> {
     Vector2::new(x,y)
 }
@@ -181,6 +187,15 @@ impl Points {
         }
         new
     }
+
+    pub fn get_first_point(&self) -> Vector2<f64> {
+        self.points.first().unwrap().clone()
+    }
+
+    pub fn get_last_point(&self) -> Vector2<f64> {
+        self.points.last().unwrap().clone()
+    }
+
 }
 
 pub trait ToPoints {

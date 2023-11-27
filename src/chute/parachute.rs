@@ -42,6 +42,15 @@ impl geometry::ToPoints for GeometryType {
     }
 }
 
+impl GeometryType {
+    fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext) {
+        match self {
+            Self::Line(config) => config.update_from_context(evaluator_context),
+            Self::EllipseArc(config) => config.update_from_context(evaluator_context)
+        }
+    }
+}
+
 // Represents a band. Can contain multiple geometries representing the cross section, but is symmetrical and has a fixed number of gores
 #[derive(Clone)]
 pub struct PolygonalChuteSection {
@@ -60,6 +69,12 @@ impl PolygonalChuteSection {
         self.objects.push(GeometryType::EllipseArc(
             configurable_shapes::ConfigurableEllipse::new(),
         ));
+    }
+
+    fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext) {
+        for object in self.objects.iter_mut() {
+            object.update_from_context(evaluator_context);
+        }
     }
 }
 
@@ -216,7 +231,7 @@ impl ChuteSection {
                 sec.line.end.y = eval(&sec.expressions[3]);
             },
             ChuteSectionType::Polygonal(sec) => {
-                //TODO
+                sec.update_from_context(evaluator_context);
             }
         }
     }
@@ -421,8 +436,53 @@ impl ChuteSection {
                 }
             },
             ChuteSectionType::Polygonal(poly) => {
-                //todo!()
-                //TODO
+                // To polygonal gore pattern
+                let mut piece = PatternPiece::new();
+                
+                if self.gores < 2 {
+                    // Not possible with polygonal shape
+                    return piece;
+                }
+
+                piece.set_corner_cutout(self.corner_cutout);
+
+                let mut cross_section = self.get_cross_section(resolution);
+
+                if cross_section.points.len() < 2 {
+                    // Must have at least two points
+                    return piece;
+                }
+                // Duplicate last point
+                cross_section.points.push(cross_section.points.last().unwrap().clone());
+
+                let mut right_points = geometry::Points::new();
+
+                // Assume for now that points start from skirt and go towards top.
+                let mut y_coord = 0.0;
+
+                let polygon_side_distance = geometry::polygon_center_to_side(self.gores);
+
+                for idx in 0..cross_section.points.len()-1 {
+                    let this_pt = cross_section.points.get(idx).unwrap();
+                    let next_pt = cross_section.points.get(idx+1).unwrap();
+                    let diff = (((this_pt.x - next_pt.x) * polygon_side_distance).powi(2) + (this_pt.y - next_pt.y).powi(2)).sqrt();
+                    let gore_pt = vec2((this_pt.x * 2.0 * PI / self.gores as f64) / 2.0, y_coord);
+                    right_points.points.push(gore_pt);
+                    y_coord += diff;
+                }
+
+                let mut left_points = right_points.mirror_x();
+                left_points.points.reverse();
+                let top_points = vec![right_points.get_last_point(), left_points.get_first_point()];
+                let bottom_points = vec![left_points.get_last_point(), right_points.get_first_point()];
+
+
+                piece.add_segment(Segment::from_vec(right_points.points, self.seam_allowance.0));
+                piece.add_segment(Segment::from_vec(top_points, self.seam_allowance.1));
+                piece.add_segment(Segment::from_vec(left_points.points, self.seam_allowance.2));
+                piece.add_segment(Segment::from_vec(bottom_points, self.seam_allowance.3));
+
+                return piece;
             }
         }
 
@@ -1042,14 +1102,7 @@ impl ChuteDesigner {
         for section in &self.chute_sections {
             //let mut chute_cross = vec![];
 
-            let chute_cross = match &section.section_type {
-                ChuteSectionType::Circular(sec) => {
-                    sec.line.to_points(60)
-                }
-                ChuteSectionType::Polygonal(sec) => {
-                    todo!()
-                }
-            };
+            let chute_cross = section.get_cross_section(60);
 
             let mut chute_cross: Vec<three_d::Vector2<f32>> = chute_cross.points.iter().map(|pt| three_d::vec2(pt.x as f32, pt.y as f32)).collect();
 
