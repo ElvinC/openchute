@@ -22,16 +22,51 @@ use std::f64::consts::PI;
 
 use uom::si::{self, length};
 
+use super::configurable_shapes::ConfigurableGeometry;
 use super::geometry::ToPoints;
+use super::configurable_shapes;
+use geometry::vec2;
 
-// helper functions
-fn vec2(x: f64, y: f64) -> na::Vector2<f64> {
-    na::Vector2::new(x,y)
+#[derive(Clone)]
+pub enum GeometryType {
+    Line(configurable_shapes::ConfigurableLine),
+    EllipseArc(configurable_shapes::ConfigurableEllipse),
+}
+
+impl geometry::ToPoints for GeometryType {
+    fn to_points(&self, resolution: u32) -> geometry::Points {
+        match self {
+            Self::Line(config) => config.to_points(resolution),
+            Self::EllipseArc(config) => config.to_points(resolution)
+        }
+    }
 }
 
 // Represents a band. Can contain multiple geometries representing the cross section, but is symmetrical and has a fixed number of gores
 #[derive(Clone)]
 pub struct PolygonalChuteSection {
+    objects: Vec<GeometryType>,
+
+}
+
+impl PolygonalChuteSection {
+    fn add_line(&mut self) {
+        self.objects.push(GeometryType::Line(
+            configurable_shapes::ConfigurableLine::new(),
+        ));
+    }
+
+    fn add_ellipse(&mut self) {
+        self.objects.push(GeometryType::EllipseArc(
+            configurable_shapes::ConfigurableEllipse::new(),
+        ));
+    }
+}
+
+impl Default for PolygonalChuteSection {
+    fn default() -> Self {
+        Self { objects: vec![] }
+    }
 }
 
 // Represents a chute section that can be bent into a perfectly circular disk/cone/cylinder. Only a straight line allowed
@@ -136,7 +171,37 @@ impl ChuteSection {
 
             },
             ChuteSectionType::Polygonal(sec) => {
-                todo!()
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Add line").clicked() {
+                        sec.add_line();
+                    }
+
+                    if ui.button("Add ellipse arc").clicked() {
+                        sec.add_ellipse();
+                    }
+                });
+
+                ui.separator();
+
+                let mut to_delete: Option<usize> = None;
+
+                for (idx, object) in sec.objects.iter_mut().enumerate() {
+                    if ui.button("❌").clicked() {
+                        to_delete = Some(idx);
+                    }
+                    match object {
+                        GeometryType::Line(config) => config.ui(ui, frame, use_imperial, evaluator_context),
+                        GeometryType::EllipseArc(config) => config.ui(ui, frame, use_imperial, evaluator_context),
+                    }
+
+                    ui.separator();
+                }
+
+                if let Some(delete_idx) = to_delete {
+                    sec.objects.remove(delete_idx);
+                }
+
             }
         }
     }
@@ -151,13 +216,31 @@ impl ChuteSection {
                 sec.line.end.y = eval(&sec.expressions[3]);
             },
             ChuteSectionType::Polygonal(sec) => {
-                
+                //TODO
             }
         }
     }
 
     fn new_circular() -> Self {
-        Self { section_type: ChuteSectionType::Circular(CircularChuteSection::default()), gores: 8, fabric: FabricSelector::new(), seam_allowance: (0.01, 0.01, 0.01, 0.01), colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]], corner_cutout: false}
+        Self {
+            section_type: ChuteSectionType::Circular(CircularChuteSection::default()),
+            gores: 8,
+            fabric: FabricSelector::new(),
+            seam_allowance: (0.01, 0.01, 0.01, 0.01),
+            colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]],
+            corner_cutout: false,
+        }
+    }
+
+    fn new_polygonal() -> Self {
+        Self {
+            section_type: ChuteSectionType::Polygonal(PolygonalChuteSection::default()),
+            gores: 8,
+            fabric: FabricSelector::new(),
+            seam_allowance: (0.01, 0.01, 0.01, 0.01),
+            colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]],
+            corner_cutout: false,
+        }
     }
 
     fn get_cross_section(&self, resolution: u32) -> geometry::Points {
@@ -167,7 +250,13 @@ impl ChuteSection {
                 circ.line.to_points(resolution)
             },
             ChuteSectionType::Polygonal(poly) => {
-                todo!()
+                let mut pts = geometry::Points::new();
+
+                for object in &poly.objects {
+                    pts.points.append(&mut object.to_points(resolution).points);
+                }
+
+                pts
             }
         }
     }
@@ -181,10 +270,11 @@ impl ChuteSection {
                 let pt1 = circ.line.begin;
                 let pt2 = circ.line.end;
 
-                let (pt1, pt2) = if circ.line.end.x >= circ.line.begin.x {
-                    (circ.line.begin, circ.line.end)
+                let (pt1, pt2, allowance) = if circ.line.end.x >= circ.line.begin.x {
+                    (circ.line.begin, circ.line.end, self.seam_allowance)
                 } else {
-                    (circ.line.end, circ.line.begin)
+                    // Rotate seam allowance 180 deg
+                    (circ.line.end, circ.line.begin, (self.seam_allowance.2, self.seam_allowance.3, self.seam_allowance.0, self.seam_allowance.1))
                 };
                 // PT2 is "outer" one
 
@@ -207,13 +297,13 @@ impl ChuteSection {
                     // Define segments clockwise to make seams work correctly
 
                     // Right segment
-                    piece.add_segment(Segment::from_vec(vec![bottom_right, top_right], self.seam_allowance.0));
+                    piece.add_segment(Segment::from_vec(vec![bottom_right, top_right], allowance.0));
                     // Top segment
-                    piece.add_segment(Segment::from_vec(vec![top_right, top_left], self.seam_allowance.1));
+                    piece.add_segment(Segment::from_vec(vec![top_right, top_left], allowance.1));
                     // Left segment
-                    piece.add_segment(Segment::from_vec(vec![top_left, bottom_left], self.seam_allowance.2));
+                    piece.add_segment(Segment::from_vec(vec![top_left, bottom_left], allowance.2));
                     // Bottom segment
-                    piece.add_segment(Segment::from_vec(vec![bottom_left, bottom_right], self.seam_allowance.3));
+                    piece.add_segment(Segment::from_vec(vec![bottom_left, bottom_right], allowance.3));
 
                     return piece;                    
                 }
@@ -227,7 +317,7 @@ impl ChuteSection {
 
 
                 // Different cases. If top seam allowance is greater than top radius, or inner_radius is zero:
-                if angle >= 1.999 * PI && inner_radius <= self.seam_allowance.1 {
+                if angle >= 1.999 * PI && inner_radius <= allowance.1 {
                     // Make full circle, no inner cutout
 
                     let num_steps = resolution as usize;
@@ -239,7 +329,7 @@ impl ChuteSection {
                         outer_points.push(vec2(angle.cos() * outer_radius, angle.sin()*outer_radius));
                     }
 
-                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3)); // Bottom seam allowance
+                    piece.add_segment(Segment::from_vec(outer_points, allowance.3)); // Bottom seam allowance
                     return piece;
             
                 } else if angle >= 1.999 * PI {
@@ -254,12 +344,12 @@ impl ChuteSection {
                         outer_points.push(vec2(angle.cos() * outer_radius, angle.sin()*outer_radius));
                     }
 
-                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3)); // Bottom seam allowance
+                    piece.add_segment(Segment::from_vec(outer_points, allowance.3)); // Bottom seam allowance
                     // TODO: add inner cutout
                     
                     return piece;
 
-                } else if inner_radius <= self.seam_allowance.1 {
+                } else if inner_radius <= allowance.1 {
                     // fraction of circle, no inner cutout
                     // Bottom at x axis
                     let start = -angle/2.0 - PI / 2.0;
@@ -275,17 +365,17 @@ impl ChuteSection {
                     }
 
                     // Outer segment
-                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3));
+                    piece.add_segment(Segment::from_vec(outer_points, allowance.3));
 
 
                     let start_outer = vec2(start.cos() * outer_radius, start.sin() * outer_radius + outer_radius);
                     let end_outer = vec2(stop.cos() * outer_radius, stop.sin() * outer_radius + outer_radius);
                     let inner = vec2(0.0, 0.0 + outer_radius);
                     // Connecting point, right side
-                    piece.add_segment(Segment::from_vec(vec![end_outer, inner], self.seam_allowance.0));
+                    piece.add_segment(Segment::from_vec(vec![end_outer, inner], allowance.0));
 
                     // Connecting piece, left side
-                    piece.add_segment(Segment::from_vec(vec![inner, start_outer], self.seam_allowance.2));
+                    piece.add_segment(Segment::from_vec(vec![inner, start_outer], allowance.2));
 
                     // todo: flip seam allowance when when segment points "inwards"
                     return piece;
@@ -309,7 +399,7 @@ impl ChuteSection {
                     inner_points.reverse(); // Reverse inner to keep clockwise ordering
 
                     // Outer segment
-                    piece.add_segment(Segment::from_vec(outer_points, self.seam_allowance.3));
+                    piece.add_segment(Segment::from_vec(outer_points, allowance.3));
 
 
                     let start_outer = vec2(start.cos() * outer_radius, start.sin() * outer_radius + outer_radius);
@@ -318,20 +408,21 @@ impl ChuteSection {
                     let end_inner = vec2(start.cos() * inner_radius, start.sin() * inner_radius + outer_radius);
 
                     // Connecting point, right side
-                    piece.add_segment(Segment::from_vec(vec![end_outer, start_inner], self.seam_allowance.0));
+                    piece.add_segment(Segment::from_vec(vec![end_outer, start_inner], allowance.0));
 
                     // Inner curve, top side
-                    piece.add_segment(Segment::from_vec(inner_points, self.seam_allowance.1));
+                    piece.add_segment(Segment::from_vec(inner_points, allowance.1));
 
                     // Connecting piece, left side
-                    piece.add_segment(Segment::from_vec(vec![end_inner, start_outer], self.seam_allowance.2));
+                    piece.add_segment(Segment::from_vec(vec![end_inner, start_outer], allowance.2));
 
                     // todo: flip seam allowance when when segment points "inwards"
                     return piece;
                 }
             },
             ChuteSectionType::Polygonal(poly) => {
-                todo!()
+                //todo!()
+                //TODO
             }
         }
 
@@ -851,7 +942,7 @@ impl ChuteDesigner {
 
             ui.horizontal(|ui| {
                 if ui.button("Add polygonal geometry").clicked() {
-                    todo!();
+                    self.chute_sections.push(ChuteSection::new_polygonal());
                 }
                 
                 if ui.button("Add circular band").clicked() {

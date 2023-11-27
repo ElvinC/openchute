@@ -21,6 +21,10 @@ fn polygon_cicumference_ratio(n: u16) -> f64 {
 	return edge_length * n as f64
 }
 
+pub fn vec2(x: f64, y: f64) -> Vector2<f64> {
+    Vector2::new(x,y)
+}
+
 #[derive(Clone)]
 pub struct Line {
     pub begin: Vector2<f64>,
@@ -33,18 +37,19 @@ impl ToPoints for Line {
     }
 }
 
+
 #[derive(Clone)]
-struct EllipseArc {
-    start_angle: f64,
-    stop_angle: f64,
-    rotation: f64, // Clockwise rotation of ellipse
-    radius_x: f64,
-    radius_y: f64,
-    center: Vector2<f64>,
+pub struct EllipseArc {
+    pub start_angle: f64,
+    pub stop_angle: f64,
+    pub rotation: f64, // Clockwise rotation of ellipse
+    pub radius_x: f64,
+    pub radius_y: f64,
+    pub center: Vector2<f64>,
 }
 
 impl EllipseArc {
-    fn circle(radius: f64, center: Vector2<f64>) -> Self {
+    pub fn circle(radius: f64, center: Vector2<f64>) -> Self {
         Self {
             start_angle: 0.0,
             stop_angle: 2.0 * PI,
@@ -142,6 +147,10 @@ pub struct Points {
 }
 
 impl Points {
+    pub fn new() -> Self {
+        Self { points: vec![] }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item=&Vector2<f64>> + '_ {
         self.points.iter()
     }
@@ -174,12 +183,11 @@ impl Points {
     }
 }
 
-pub trait ToPoints: Clone {
+pub trait ToPoints {
     // Resolution is roughly number of points in full circle
     // 200 default is fine
     fn to_points(&self, resolution: u32) -> Points;
 }
- 
 
 struct GeometryOption {
     name: String,
@@ -187,12 +195,10 @@ struct GeometryOption {
     range: RangeInclusive<f64>,
 }
 
-// Can be used to set options
-trait Configurable: ToPoints {
-    fn new() -> Self; // Creates a default one
-    fn get_options(&mut self) -> Vec<GeometryOption>;
-    fn set_option(&mut self);
-}
+
+
+
+
 
 #[cfg(test)]
 mod tests {
