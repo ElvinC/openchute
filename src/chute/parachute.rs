@@ -461,12 +461,13 @@ impl ChuteSection {
                 let mut y_coord = 0.0;
 
                 let polygon_side_distance = geometry::polygon_center_to_side(self.gores);
+                let polygon_side_length = geometry::polygon_cicumference_ratio(self.gores);
 
                 for idx in 0..cross_section.points.len()-1 {
                     let this_pt = cross_section.points.get(idx).unwrap();
                     let next_pt = cross_section.points.get(idx+1).unwrap();
                     let diff = (((this_pt.x - next_pt.x) * polygon_side_distance).powi(2) + (this_pt.y - next_pt.y).powi(2)).sqrt();
-                    let gore_pt = vec2((this_pt.x * 2.0 * PI / self.gores as f64) / 2.0, y_coord);
+                    let gore_pt = vec2(polygon_side_length * this_pt.x * 0.5, y_coord);
                     right_points.points.push(gore_pt);
                     y_coord += diff;
                 }

@@ -14,11 +14,11 @@ const RAD2DEG: f64 = 180.0 / PI;
 
 
 // Get the circumference of regular polygon with N sides compared to its circumscribed circle.
-fn polygon_cicumference_ratio(n: u16) -> f64 {
+pub fn polygon_cicumference_ratio(n: u16) -> f64 {
 	// Assume radius (center to corner) is 1
 	let angle = 2.0 * PI / n as f64;
 	let edge_length = (angle/2.0).sin() * 2.0;
-	return edge_length * n as f64
+	return edge_length as f64
 }
 
 // Get the distance between the center and the side of a polygon, with a distance between the center and a corner of 1.
