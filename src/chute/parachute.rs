@@ -1105,6 +1105,10 @@ impl ChuteDesigner {
 
             let chute_cross = section.get_cross_section(60);
 
+            if chute_cross.points.len() < 2 {
+                continue;
+            }
+
             let mut chute_cross: Vec<three_d::Vector2<f32>> = chute_cross.points.iter().map(|pt| three_d::vec2(pt.x as f32, pt.y as f32)).collect();
 
             let num_gores = section.gores as usize;
@@ -1204,6 +1208,58 @@ impl ChuteDesigner {
         result.push(cpu_mesh);
 
         result
+    }
+
+    pub fn export_dxf(&mut self) {
+
+        // Create a new DXF drawing
+        let mut drawing = Drawing::new();
+
+        let mut x_offset = 0.0;
+
+        let add_text = true;
+
+        for (idx,chute_section) in self.chute_sections.iter().enumerate() {
+            let mut piece = chute_section.to_pattern_piece(360); // High resolution for export
+            
+            // Create a polyline entity for the triangle
+            let mut polyline = Polyline::default();
+            polyline.set_is_closed(true); // Closed polyline for a triangle
+            
+            piece.compute();
+            
+            let gore_points = geometry::Points::from_vec(piece.computed_points);
+            let (min, max) = gore_points.bounds();
+
+            let width = max.x - min.x;
+
+            for point in &gore_points.points {
+                let vertex = Vertex::new(dxf::Point::new(point.x + x_offset - min.x, point.y - min.y, 0.0));
+                polyline.add_vertex(&mut drawing, vertex);
+            }
+
+            let mut label = Text::default();
+            label.value = format!("#{}(x{})", idx + 1, chute_section.gores);
+            label.horizontal_text_justification = dxf::enums::HorizontalTextJustification::Left;
+            label.location = dxf::Point::new(x_offset, -0.2, 0.0);
+            //label.second_alignment_point = dxf::Point::new(x_offset + width, -0.2, 0.0);
+            label.text_height = 0.04;
+
+            x_offset += width + 0.1; // 10 cm between
+            
+            // Add the polyline to the drawing
+            drawing.add_entity(Entity::new(EntityType::Polyline(polyline)));
+
+            drawing.add_entity(Entity::new(EntityType::Text(label)));
+        }
+
+        // Save the drawing to a DXF file
+        drawing.save_file("gores.dxf").unwrap();
+
+        println!("Gores saved to gores.dxf");
+        // TODO: location select
+
+
     }
 }
 

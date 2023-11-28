@@ -117,7 +117,7 @@ impl ChuteUI {
                 ui.close_menu();
             }
             if ui.button("Export DXF").clicked() {
-                todo!();
+                self.designer.export_dxf();
                 ui.close_menu();
             }
             if ui.button("Export SVG").clicked() {
