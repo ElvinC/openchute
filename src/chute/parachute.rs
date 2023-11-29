@@ -27,7 +27,11 @@ use super::geometry::ToPoints;
 use super::configurable_shapes;
 use geometry::vec2;
 
-#[derive(Clone)]
+use serde::{Serialize, Deserialize};
+use serde_json;
+
+
+#[derive(Clone, Serialize, Deserialize)]
 pub enum GeometryType {
     Line(configurable_shapes::ConfigurableLine),
     EllipseArc(configurable_shapes::ConfigurableEllipse),
@@ -52,7 +56,7 @@ impl GeometryType {
 }
 
 // Represents a band. Can contain multiple geometries representing the cross section, but is symmetrical and has a fixed number of gores
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PolygonalChuteSection {
     objects: Vec<GeometryType>,
 
@@ -85,7 +89,7 @@ impl Default for PolygonalChuteSection {
 }
 
 // Represents a chute section that can be bent into a perfectly circular disk/cone/cylinder. Only a straight line allowed
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CircularChuteSection {
     line: geometry::Line,
     expressions: [String; 4]
@@ -101,13 +105,13 @@ impl Default for CircularChuteSection {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum ChuteSectionType {
     Polygonal(PolygonalChuteSection),
     Circular(CircularChuteSection)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ChuteSection {
     section_type: ChuteSectionType,
     gores: u16,
@@ -186,7 +190,6 @@ impl ChuteSection {
 
             },
             ChuteSectionType::Polygonal(sec) => {
-                ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Add line").clicked() {
                         sec.add_line();
@@ -209,8 +212,6 @@ impl ChuteSection {
                         GeometryType::Line(config) => config.ui(ui, frame, use_imperial, evaluator_context),
                         GeometryType::EllipseArc(config) => config.ui(ui, frame, use_imperial, evaluator_context),
                     }
-
-                    ui.separator();
                 }
 
                 if let Some(delete_idx) = to_delete {
@@ -499,7 +500,7 @@ impl geometry::ToPoints for ChuteSection {
 }
 
 // Standard unit combinations for input sliders
-#[derive(PartialEq, Clone, Default)]
+#[derive(PartialEq, Clone, Default, Serialize, Deserialize)]
 pub enum StandardUnit {
     #[default] UnitLess, // Can be used if other SI units are needed
     MeterFoot,
@@ -531,7 +532,7 @@ impl StandardUnit {
 }
 
 // Represents a slider that can be used as input
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Serialize, Deserialize)]
 pub struct InputValue {
     pub id: String, // Unique identifier
     pub description: String, // Short description of what it does
@@ -543,7 +544,7 @@ pub struct InputValue {
 
 // These are parameters that are computed using the InputValues. 
 // They are evaluated sequentially and may refer to previous computed ParameterValue variables.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Serialize, Deserialize)]
 pub struct ParameterValue {
     pub id: String,
     pub expression: String, // Mathematical expression. Value not needed since it's saved in the context
@@ -552,7 +553,7 @@ pub struct ParameterValue {
 
 
 // Parachute designer interface, implements the relevant UI drawing functions
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ChuteDesigner {
     name: String,
     gores: u16,
@@ -571,6 +572,8 @@ pub struct ChuteDesigner {
 
     chute_sections: Vec<ChuteSection>,
 
+    #[serde(skip)]
+    #[serde(default = "ChuteDesigner::default_context")]
     evaluator_context: evalexpr::HashMapContext, // evaluator that handles variables etc. Note: stored value always in SI base unit
 }
 
@@ -603,6 +606,18 @@ unit! {
 
 
 impl ChuteDesigner {
+
+    pub fn from_json(s: &str) -> Self {
+        serde_json::from_str(s).unwrap_or_else(|_| {
+            println!("Error loading file");
+            Self::default()
+        })
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
     pub fn options_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
         
         // Number of gores
@@ -1273,12 +1288,9 @@ impl ChuteDesigner {
 
 
     }
-}
 
-
-impl Default for ChuteDesigner {
-    fn default() -> Self {
-        let context = evalexpr::context_map! {
+    pub fn default_context() -> evalexpr::HashMapContext {
+        evalexpr::context_map! {
             "m" => 1.0,
             "mm" => 0.001,
             "yd" => 0.9144,
@@ -1289,7 +1301,14 @@ impl Default for ChuteDesigner {
             "e" => core::f64::consts::E,
             "deg" => PI / 180.0,
             "ln" => Function::new(|arg| Ok(evalexpr::Value::Float(arg.as_float()?.ln())))
-        }.unwrap();
+        }.unwrap()
+    }
+}
+
+
+impl Default for ChuteDesigner {
+    fn default() -> Self {
+        let context = Self::default_context();
 
         // TODO: make math functions work without prefix
 
@@ -1723,7 +1742,7 @@ struct SuspensionLine {
     name: String,
 }
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq, Serialize, Deserialize)]
 struct Fabric {
     area_density_gsm: f64,
     name: String
@@ -1744,7 +1763,7 @@ impl Fabric {
 
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Serialize, Deserialize)]
 struct FabricSelector {
     modified: bool,
     selected_fabric: Fabric,

@@ -6,6 +6,8 @@ use std::ops::RangeInclusive;
 
 use nalgebra::{Vector2, Rotation2};
 
+use serde::{Serialize, Deserialize};
+
 // Helper functions and values
 
 const PI: f64 = std::f64::consts::PI;
@@ -31,7 +33,7 @@ pub fn vec2(x: f64, y: f64) -> Vector2<f64> {
     Vector2::new(x,y)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Line {
     pub begin: Vector2<f64>,
     pub end: Vector2<f64>,
@@ -44,7 +46,7 @@ impl ToPoints for Line {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EllipseArc {
     pub start_angle: f64,
     pub stop_angle: f64,
@@ -91,7 +93,7 @@ impl ToPoints for EllipseArc {
 }
 
 // A generic bezier curve
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct BezierSpline {
     control_points: Vec<(Vector2<f64>, Vector2<f64>, Vector2<f64>)>, // Handle1, center, handle2
 }

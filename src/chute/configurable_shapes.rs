@@ -5,13 +5,15 @@ use nalgebra::Vector2;
 use super::geometry::{vec2, ToPoints};
 use super::geometry;
 
+use serde::{Serialize, Deserialize};
+
 // Can be used to set options
 pub trait ConfigurableGeometry: geometry::ToPoints {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext);
     fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ConfigurableLine {
     line: geometry::Line,
     expressions: [String; 4],
@@ -63,7 +65,7 @@ impl ConfigurableGeometry for ConfigurableLine {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ConfigurableEllipse {
     ellipse: geometry::EllipseArc,
     start_angle: String,

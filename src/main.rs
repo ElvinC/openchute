@@ -116,6 +116,11 @@ impl ChuteUI {
                 todo!();
                 ui.close_menu();
             }
+            if ui.button("💾 Save design as").clicked() {
+                self.save_project_file();
+                
+                ui.close_menu();
+            }
             if ui.button("Export DXF").clicked() {
                 self.designer.export_dxf();
                 ui.close_menu();
@@ -269,7 +274,8 @@ impl ChuteUI {
     fn open_project_file(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = rfd::FileDialog::new().add_filter("*", &["chute"]).pick_file() {
-            self.load_project_file(path.clone());
+            self.designer = parachute::ChuteDesigner::from_json(&std::fs::read_to_string(path).unwrap());
+            //self.load_project_file(path.clone());
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -292,6 +298,18 @@ impl ChuteUI {
         
     }
 
+    fn save_project_file(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = rfd::FileDialog::new().add_filter("*", &["chute"]).save_file() {
+            std::fs::write(path, self.designer.to_json().unwrap());
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+
+        }
+    }
+
 }
 
 impl eframe::App for ChuteUI {
@@ -303,13 +321,6 @@ impl eframe::App for ChuteUI {
                 self.bar_contents(ui, frame);
             });
         });
-
-        /*
-        egui::SidePanel::left("my_left_panel").resizable(true).show(ctx, |ui| {
-            ui.label("Hello World!");
-            ui.text_edit_singleline(&mut self.name);
-        });
-         */
 
         egui::CentralPanel::default().show(ctx, |ui| {
 
