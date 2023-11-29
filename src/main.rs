@@ -223,7 +223,8 @@ impl ChuteUI {
 
             ui = &mut columns[1];
             
-            self.designer.draw_cross_section(ui, frame);
+            self.designer.draw_cross_section(ui, frame, None);
+            self.designer.draw_gores(ui, frame, None);
 
             // TODO: Make it only update when underlying data changes
             self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));

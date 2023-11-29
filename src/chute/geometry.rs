@@ -72,7 +72,7 @@ impl ToPoints for EllipseArc {
         let start = self.start_angle % (2.0 * PI);
         let stop = if self.stop_angle > 2.0 * PI { self.stop_angle % (2.0 * PI) } else { self.stop_angle };
         let diff = stop - start;
-        let num_steps = (diff / (2.0 * PI) * (resolution as f64)) as usize;
+        let num_steps = ((diff / (2.0 * PI) * (resolution as f64)) as usize).max(3);
 
         let mut result = vec![];
 

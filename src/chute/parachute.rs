@@ -159,7 +159,7 @@ impl ChuteSection {
             }
         });
 
-
+        ui.separator();
 
         let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
         
@@ -490,9 +490,6 @@ impl ChuteSection {
         PatternPiece::new()
     }
 
-    fn get_3d_model() {
-
-    }
 }
 
 impl geometry::ToPoints for ChuteSection {
@@ -682,16 +679,16 @@ impl ChuteDesigner {
         }
     }
 
-    pub fn draw_cross_section(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+    pub fn draw_cross_section(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, highlighted: Option<u16>) {
         let mut lines = self.get_cross_section();
         lines.append(&mut self.get_cross_section().iter().map(|p| p.mirror_x()).collect());
 
-        self.equal_aspect_plot(ui, frame, &lines, Some(0), "cross_section".into());
+        self.equal_aspect_plot(ui, frame, &lines, highlighted, "cross_section".into());
     }
 
-    pub fn draw_gores(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+    pub fn draw_gores(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, highlighted: Option<u16>) {
         let mut lines = self.get_gores();
-        self.equal_aspect_plot(ui, frame, &lines, Some(0), "gore_plot".into());
+        self.equal_aspect_plot(ui, frame, &lines, highlighted, "gore_plot".into());
     }
 
     pub fn equal_aspect_plot(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, data: &Vec<geometry::Points>, highlighted: Option<u16>, id: String) {
@@ -1017,20 +1014,33 @@ impl ChuteDesigner {
             let mut to_delete: Option<usize> = None;
             let mut to_move: Option<(usize, bool)> = None; // Option containing index and true if moving up and false if down
             let num_parameters = self.chute_sections.len();
+            let mut focus_idx: Option<u16> = None;
+
             for (idx, chute_section) in self.chute_sections.iter_mut().enumerate() {
                 ui.separator();
-                ui.horizontal(|ui| {
-                    if ui.button("❌").clicked() {
-                        to_delete = Some(idx);
-                    };
-                    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                        to_move = Some((idx, true));
-                    }
-                    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                        to_move = Some((idx, false));
-                    };
-                });
-                chute_section.ui(ui, frame, use_imperial, &self.evaluator_context, idx as u16);
+                let res = egui::Frame::none().stroke(egui::Stroke::new(1.0, egui::Color32::GRAY)).inner_margin(10.0).outer_margin(5.0).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            if ui.button("❌").clicked() {
+                                to_delete = Some(idx);
+                            };
+                            if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
+                                to_move = Some((idx, true));
+                            }
+                            if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
+                                to_move = Some((idx, false));
+                            };
+                        });
+                        ui.separator();
+                        ui.vertical(|ui| {
+                            chute_section.ui(ui, frame, use_imperial, &self.evaluator_context, idx as u16);
+                        });
+                    });
+                }).response;
+
+                if res.hovered() {
+                    focus_idx = Some(idx as u16);
+                }
             }
     
             if let Some((idx, direction)) = to_move {
@@ -1048,9 +1058,9 @@ impl ChuteDesigner {
     
             ui.separator();
     
-            self.draw_cross_section(ui, frame);
+            self.draw_cross_section(ui, frame, focus_idx);
 
-            self.draw_gores(ui, frame);
+            self.draw_gores(ui, frame, focus_idx);
 
         });
 
@@ -1252,6 +1262,8 @@ impl ChuteDesigner {
 
             drawing.add_entity(Entity::new(EntityType::Text(label)));
         }
+
+        drawing.header.default_drawing_units = dxf::enums::Units::Meters;
 
         // Save the drawing to a DXF file
         drawing.save_file("gores.dxf").unwrap();
@@ -1755,7 +1767,6 @@ impl FabricSelector {
 
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, id: u16) {
-        ui.label("Select fabric:");
         egui::ComboBox::from_id_source(id)
             .width(200.0)
             .selected_text(self.selected_fabric.get_name_weight(use_imperial))
