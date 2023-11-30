@@ -16,11 +16,19 @@ const RAD2DEG: f64 = 180.0 / PI;
 
 
 // Get the circumference of regular polygon with N sides compared to its circumscribed circle.
-pub fn polygon_cicumference_ratio(n: u16) -> f64 {
+pub fn polygon_edge_len(n: u16) -> f64 {
 	// Assume radius (center to corner) is 1
 	let angle = 2.0 * PI / n as f64;
 	let edge_length = (angle/2.0).sin() * 2.0;
 	return edge_length as f64
+}
+
+pub fn polygon_to_circle_expansion(n: u16) -> f64 {
+    let nf: f64 = n.max(1) as f64; // avoid zero division issues
+    let angle = 2.0 * PI / nf as f64;
+    let edge_length = (angle/2.0).sin() * 2.0;
+    let ratio = 2.0 * PI / (edge_length * nf as f64);
+    ratio
 }
 
 // Get the distance between the center and the side of a polygon, with a distance between the center and a corner of 1.
@@ -223,7 +231,7 @@ mod tests {
 
     use nalgebra::Vector2;
 
-    use super::{EllipseArc, ToPoints, BezierSpline};
+    use super::{EllipseArc, ToPoints, BezierSpline, polygon_to_circle_expansion};
 
     #[test]
     fn test_ellipse() {
@@ -251,5 +259,12 @@ mod tests {
         bez.add_control(Vector2::new(0.0, 0.0), Vector2::new(0.0, 0.0), Vector2::new(1.0, 0.0));
         bez.add_control(Vector2::new(0.0, 1.0), Vector2::new(1.0, 1.0), Vector2::new(1.0, 1.0));
         println!("{:?}", bez.to_points(50).points);
+    }
+
+    #[test]
+    fn test_polygon_to_circle() {
+        let test = polygon_to_circle_expansion(2);
+        println!("{}", test);
+        assert_eq!(test, 2.0 * PI / (4.0));
     }
 }

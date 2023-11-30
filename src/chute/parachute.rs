@@ -259,7 +259,10 @@ impl ChuteSection {
         }
     }
 
-    fn get_cross_section(&self, resolution: u32) -> geometry::Points {
+    fn get_cross_section(&self, resolution: u32, expanded_polygon: bool) -> geometry::Points {
+        // expanded_polygon expands the polygonal geometry so the circumference is equal the nominal circular circumference.
+        // Not used in 2D plot, only when generating gores or in 3D plot (corner locations)
+
         // to 2D section
         match &self.section_type {
             ChuteSectionType::Circular(circ) => {
@@ -269,7 +272,17 @@ impl ChuteSection {
                 let mut pts = geometry::Points::new();
 
                 for object in &poly.objects {
-                    pts.points.append(&mut object.to_points(resolution).points);
+                    if expanded_polygon {
+                        let mut cross_section = object.to_points(resolution).points;
+                        let expansion_ratio = geometry::polygon_to_circle_expansion(self.gores);
+                        cross_section.iter_mut().for_each(|pt| {
+                            pt.x *= expansion_ratio;
+                        });
+
+                        pts.points.append(&mut cross_section);
+                    } else {
+                        pts.points.append(&mut object.to_points(resolution).points);
+                    }
                 }
 
                 pts
@@ -447,7 +460,7 @@ impl ChuteSection {
 
                 piece.set_corner_cutout(self.corner_cutout);
 
-                let mut cross_section = self.get_cross_section(resolution);
+                let mut cross_section = self.get_cross_section(resolution, true);
 
                 if cross_section.points.len() < 2 {
                     // Must have at least two points
@@ -462,7 +475,7 @@ impl ChuteSection {
                 let mut y_coord = 0.0;
 
                 let polygon_side_distance = geometry::polygon_center_to_side(self.gores);
-                let polygon_side_length = geometry::polygon_cicumference_ratio(self.gores);
+                let polygon_side_length = geometry::polygon_edge_len(self.gores);
 
                 for idx in 0..cross_section.points.len()-1 {
                     let this_pt = cross_section.points.get(idx).unwrap();
@@ -495,7 +508,7 @@ impl ChuteSection {
 
 impl geometry::ToPoints for ChuteSection {
     fn to_points(&self, resolution: u32) -> geometry::Points {
-        self.get_cross_section(resolution)
+        self.get_cross_section(resolution, false)
     }
 }
 
@@ -619,6 +632,7 @@ impl ChuteDesigner {
     }
 
     pub fn options_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool) {
+
         
         // Number of gores
         /*
@@ -696,7 +710,7 @@ impl ChuteDesigner {
 
     pub fn draw_cross_section(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, highlighted: Option<u16>) {
         let mut lines = self.get_cross_section();
-        lines.append(&mut self.get_cross_section().iter().map(|p| p.mirror_x()).collect());
+        lines.append(&mut lines.iter().map(|p| p.mirror_x()).collect());
 
         self.equal_aspect_plot(ui, frame, &lines, highlighted, "cross_section".into());
     }
@@ -1094,7 +1108,7 @@ impl ChuteDesigner {
 
         for chute_section in &self.chute_sections {
             // use relatively low resolution at 30 points
-            result.push(chute_section.get_cross_section(30));
+            result.push(chute_section.get_cross_section(30, false));
         }
 
         result
@@ -1128,7 +1142,7 @@ impl ChuteDesigner {
         for section in &self.chute_sections {
             //let mut chute_cross = vec![];
 
-            let chute_cross = section.get_cross_section(60);
+            let chute_cross = section.get_cross_section(60, true);
 
             if chute_cross.points.len() < 2 {
                 continue;
@@ -1252,6 +1266,8 @@ impl ChuteDesigner {
             polyline.set_is_closed(true); // Closed polyline for a triangle
             
             piece.compute();
+
+            println!("Total area: {} including seams, {} not including seams (m2)", piece.get_area(true) * chute_section.gores as f64, piece.get_area(false) * chute_section.gores as f64);
             
             let gore_points = geometry::Points::from_vec(piece.computed_points);
             let (min, max) = gore_points.bounds();
@@ -1646,7 +1662,7 @@ impl PatternPiece {
         let mut sum = 0.0;
         // https://en.wikipedia.org/wiki/Shoelace_formula
         for point_pair in points.windows(2) {
-            println!("{:?}", point_pair);
+            //println!("{:?}", point_pair);
             sum += point_pair[0].x * point_pair[1].y - point_pair[0].y * point_pair[1].x;
         }
         sum/2.0
