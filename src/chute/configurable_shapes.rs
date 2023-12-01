@@ -36,7 +36,7 @@ impl ToPoints for ConfigurableLine {
 
 impl ConfigurableGeometry for ConfigurableLine {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext) {
-        
+        ui.label("Line geometry:");
 
         ui.label("Start point:");
 
@@ -84,6 +84,7 @@ impl ToPoints for ConfigurableEllipse {
 
 impl ConfigurableGeometry for ConfigurableEllipse {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext) {
+        ui.label("Ellipse geometry:");
 
         ui.label("Angle start-stop:");
         ui.horizontal(|ui| {

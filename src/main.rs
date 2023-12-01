@@ -34,7 +34,7 @@ fn main() -> eframe::Result<()> {
     };
     
     eframe::run_native(
-        &format!("Openchute v{}", env!("CARGO_PKG_VERSION")),
+        &format!("OpenChute v{}", env!("CARGO_PKG_VERSION")),
         native_options,
         Box::new(|cc| Box::<ChuteUI>::default()),
     )
@@ -122,7 +122,7 @@ impl ChuteUI {
                 ui.close_menu();
             }
             if ui.button("Export DXF").clicked() {
-                if let Some(path) = rfd::FileDialog::new().add_filter("*", &["pdf"]).save_file() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("*", &["dxf"]).save_file() {
                     self.designer.export_dxf(path);   
                 }
                 ui.close_menu();
@@ -341,7 +341,7 @@ impl eframe::App for ChuteUI {
             .show(ui, |ui| {
                 if !self.initialised {
                     // Show buttons for loading a file or creating a new project
-                    ui.heading("Welcome to <unnamed parachute design software> :D");
+                    ui.heading("Welcome to OpenChute (incomplete alpha version) :D");
                     ui.label("You can also drag a design file onto here");
                     ui.horizontal(|ui| {
                         if ui.button("Open parachute…").clicked() {

@@ -167,9 +167,10 @@ impl ChuteSection {
         ui.separator();
 
         let eval = |expr: &str| evalexpr::eval_number_with_context(expr, evaluator_context).unwrap_or(0.0);
-        
+
         match &mut self.section_type {
             ChuteSectionType::Circular(sec) => {
+                ui.label("Circular chute section:");
                 ui.label("Start point:");
 
                 ui.horizontal(|ui| {
@@ -644,8 +645,8 @@ impl ChuteDesigner {
         ui::dimension_field(ui, &mut self.diameter, use_imperial, 0.0..=10.0);
         ui::number_edit_field(ui, &mut self.diameter);
         */
-        ui.add_enabled(self.use_global_seam_allowance, egui::Slider::new::<f64>(&mut self.global_seam_allowance, 0.0..=5.0));
-        ui.add_enabled(self.use_global_seam_allowance, egui::Checkbox::new(&mut false, "Cut corners of seam allowance"));
+        //ui.add_enabled(self.use_global_seam_allowance, egui::Slider::new::<f64>(&mut self.global_seam_allowance, 0.0..=5.0));
+        //ui.add_enabled(self.use_global_seam_allowance, egui::Checkbox::new(&mut false, "Cut corners of seam allowance"));
 
         //egui::widgets::color_picker::color_edit_button_rgb(ui, &mut self.test_color);
 
@@ -717,8 +718,9 @@ impl ChuteDesigner {
     }
 
     pub fn draw_gores(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, highlighted: Option<u16>) {
-        let mut lines = self.get_gores();
+        let (mut lines, area_with_seams, area) = self.get_gores();
         self.equal_aspect_plot(ui, frame, &lines, highlighted, "gore_plot".into());
+        ui.label(format!("Chute canopy area: {:.5} m². Total area (including seams): {:.5} m²", area, area_with_seams));
     }
 
     pub fn equal_aspect_plot(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, data: &Vec<geometry::Points>, highlighted: Option<u16>, id: String) {
@@ -1115,16 +1117,23 @@ impl ChuteDesigner {
         result
     }
 
-    pub fn get_gores(&self) -> Vec<geometry::Points> {
+    pub fn get_gores(&self) -> (Vec<geometry::Points>, f64, f64) {
+        // Returns points for plotting, area (m2) with and without seam allowance
+        
         let mut result = vec![];
+
+        let mut area_no_seam = 0.0;
+        let mut area_with_seams = 0.0;
 
         for chute_section in &self.chute_sections {
             let mut piece = chute_section.to_pattern_piece(80);
             piece.compute();
+            area_no_seam += piece.get_area(false) * chute_section.gores as f64;
+            area_with_seams += piece.get_area(true) * chute_section.gores as f64;
             result.push( geometry::Points::from_vec(piece.computed_points));
         }
 
-        result
+        (result, area_with_seams, area_no_seam)
     }
 
     pub fn get_3d_data(&self) -> Vec<three_d::CpuMesh> {
@@ -1320,7 +1329,9 @@ impl ChuteDesigner {
 
         let mut all_lines: Vec<printpdf::Line> = vec![];
 
-        let mut x_offset = 0.0;
+        let x_padding = 0.05;
+        let mut x_offset = x_padding;
+        let mut y_padding = 0.05;
         let mut y_max: f64 = 0.0;
 
         for (idx,chute_section) in self.chute_sections.iter().enumerate() {
@@ -1342,17 +1353,17 @@ impl ChuteDesigner {
             let m_to_point = |x: f64,y: f64| {printpdf::Point::new(printpdf::Mm(x as f32 * 1000.0), printpdf::Mm(y as f32 * 1000.0))};
 
             for point in &gore_points.points {
-                let vertex = (m_to_point(point.x + x_offset - min.x, point.y - min.y), false);
+                let vertex = (m_to_point(point.x + x_offset - min.x, point.y - min.y + y_padding), false);
                 y_max = y_max.max(point.y - min.y);
                 polyline.push(vertex);
             }
 
             for point in &no_seam.points {
-                let vertex = (m_to_point(point.x + x_offset - min.x, point.y - min.y), false);
+                let vertex = (m_to_point(point.x + x_offset - min.x, point.y - min.y + y_padding), false);
                 polyline_no_seam.push(vertex);
             }
 
-            x_offset += width + 0.1; // 10 cm between
+            x_offset += width + x_padding; // padding
             
             all_lines.push(printpdf::Line {
                 points: polyline,
@@ -1369,19 +1380,19 @@ impl ChuteDesigner {
         let (doc, page1, layer1) = printpdf::PdfDocument::new(
             "Gores", 
             printpdf::Mm(x_offset as f32 * 1000.0), 
-            printpdf::Mm(y_max as f32 * 1000.0),
+            printpdf::Mm((y_max + y_padding * 2.0)as f32 * 1000.0),
             "Layer 1"
         );
         let current_layer = doc.get_page(page1).get_layer(layer1);
 
         let fill_color = printpdf::Color::Cmyk(printpdf::Cmyk::new(0.0, 0.23, 0.0, 0.0, None));
-        let outline_color = printpdf::Color::Rgb(printpdf::Rgb::new(0.75, 1.0, 0.64, None));
+        let outline_color = printpdf::Color::Rgb(printpdf::Rgb::new(0.0, 0.0, 0.0, None));
         let mut dash_pattern = printpdf::LineDashPattern::default();
-        dash_pattern.dash_1 = Some(20);
+        dash_pattern.dash_1 = None;
 
         current_layer.set_fill_color(fill_color);
         current_layer.set_outline_color(outline_color);
-        current_layer.set_outline_thickness(10.0);
+        current_layer.set_outline_thickness(2.0);
 
         for line in all_lines {
             current_layer.add_line(line);
@@ -1743,6 +1754,10 @@ impl PatternPiece {
 
     fn get_area(&self, including_seams: bool) -> f64 {
         let mut points = if including_seams { self.computed_points.clone() } else { self.points.clone() };
+        if points.len() < 2 {
+            return 0.0
+        }
+        
         points.push(points.first().unwrap().clone()); // Wrap around
 
         let mut sum = 0.0;
