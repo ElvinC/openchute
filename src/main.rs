@@ -112,23 +112,31 @@ impl ChuteUI {
                 ui.close_menu();
             }
             ui.separator();
-            if ui.button("💾 Save design").clicked() {
-                todo!();
-                ui.close_menu();
-            }
+            //if ui.button("💾 Save design").clicked() {
+            //    todo!();
+            //    ui.close_menu();
+            //}
             if ui.button("💾 Save design as").clicked() {
                 self.save_project_file();
                 
                 ui.close_menu();
             }
             if ui.button("Export DXF").clicked() {
-                self.designer.export_dxf();
+                if let Some(path) = rfd::FileDialog::new().add_filter("*", &["pdf"]).save_file() {
+                    self.designer.export_dxf(path);   
+                }
                 ui.close_menu();
             }
-            if ui.button("Export SVG").clicked() {
-                todo!();
+            if ui.button("Export PDF").clicked() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("*", &["pdf"]).save_file() {
+                    self.designer.export_pdf(path);   
+                }
                 ui.close_menu();
             }
+            //if ui.button("Export SVG").clicked() {
+            //    todo!();
+            //    ui.close_menu();
+            //}
         });
 
 
@@ -260,7 +268,8 @@ impl ChuteUI {
         println!("PATH: {:?}", path);
         if path.extension().unwrap_or_default().to_str() == Some("chute") {
             self.state.display_filename = Some(path.file_name().unwrap().to_str().unwrap().to_owned());
-            self.state.project_file = Some(path);
+            self.state.project_file = Some(path.clone());
+            self.designer = parachute::ChuteDesigner::from_json(&std::fs::read_to_string(path).unwrap());
             self.initialised = true;
         }
     }
@@ -268,14 +277,18 @@ impl ChuteUI {
     fn load_project_bytes(&mut self, bytes: Vec<u8>) {
         println!("Loaded bytes: {}", bytes.len());
         self.state.display_filename = Some(format!("Bytes {}", bytes.len()));
+
+        if let Ok(des) = String::from_utf8(bytes) {
+            self.designer = parachute::ChuteDesigner::from_json(&des);
+        }
+        
         self.initialised = true;
     }
 
     fn open_project_file(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = rfd::FileDialog::new().add_filter("*", &["chute"]).pick_file() {
-            self.designer = parachute::ChuteDesigner::from_json(&std::fs::read_to_string(path).unwrap());
-            //self.load_project_file(path.clone());
+            self.load_project_file(path);
         }
 
         #[cfg(target_arch = "wasm32")]

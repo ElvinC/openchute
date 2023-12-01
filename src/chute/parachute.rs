@@ -4,6 +4,7 @@
 
 extern crate nalgebra as na;
 use std::default;
+use std::path::PathBuf;
 
 use dxf;
 use dxf::Drawing;
@@ -1249,7 +1250,7 @@ impl ChuteDesigner {
         result
     }
 
-    pub fn export_dxf(&mut self) {
+    pub fn export_dxf(&mut self, path: PathBuf) {
 
         // Create a new DXF drawing
         let mut drawing = Drawing::new();
@@ -1264,12 +1265,16 @@ impl ChuteDesigner {
             // Create a polyline entity for the triangle
             let mut polyline = Polyline::default();
             polyline.set_is_closed(true); // Closed polyline for a triangle
+
+            let mut polyline_no_seam = Polyline::default();
+            polyline_no_seam.set_is_closed(true);
             
             piece.compute();
 
             println!("Total area: {} including seams, {} not including seams (m2)", piece.get_area(true) * chute_section.gores as f64, piece.get_area(false) * chute_section.gores as f64);
             
             let gore_points = geometry::Points::from_vec(piece.computed_points);
+            let no_seam = geometry::Points::from_vec(piece.points);
             let (min, max) = gore_points.bounds();
 
             let width = max.x - min.x;
@@ -1277,6 +1282,11 @@ impl ChuteDesigner {
             for point in &gore_points.points {
                 let vertex = Vertex::new(dxf::Point::new(point.x + x_offset - min.x, point.y - min.y, 0.0));
                 polyline.add_vertex(&mut drawing, vertex);
+            }
+
+            for point in &no_seam.points {
+                let vertex = Vertex::new(dxf::Point::new(point.x + x_offset - min.x, point.y - min.y, 0.0));
+                polyline_no_seam.add_vertex(&mut drawing, vertex);
             }
 
             let mut label = Text::default();
@@ -1290,6 +1300,7 @@ impl ChuteDesigner {
             
             // Add the polyline to the drawing
             drawing.add_entity(Entity::new(EntityType::Polyline(polyline)));
+            drawing.add_entity(Entity::new(EntityType::Polyline(polyline_no_seam)));
 
             drawing.add_entity(Entity::new(EntityType::Text(label)));
         }
@@ -1297,11 +1308,86 @@ impl ChuteDesigner {
         drawing.header.default_drawing_units = dxf::enums::Units::Meters;
 
         // Save the drawing to a DXF file
-        drawing.save_file("gores.dxf").unwrap();
+        drawing.save_file(path).unwrap();
 
-        println!("Gores saved to gores.dxf");
+        println!("Gores saved to dxf");
         // TODO: location select
 
+
+    }
+
+    pub fn export_pdf(&mut self, path: PathBuf) {
+
+        let mut all_lines: Vec<printpdf::Line> = vec![];
+
+        let mut x_offset = 0.0;
+        let mut y_max: f64 = 0.0;
+
+        for (idx,chute_section) in self.chute_sections.iter().enumerate() {
+            let mut piece = chute_section.to_pattern_piece(360); // High resolution for export
+            
+            let mut polyline: Vec<(printpdf::Point, bool)> = vec![];
+            let mut polyline_no_seam: Vec<(printpdf::Point, bool)> = vec![];
+            
+            piece.compute();
+
+            println!("Total area: {} including seams, {} not including seams (m2)", piece.get_area(true) * chute_section.gores as f64, piece.get_area(false) * chute_section.gores as f64);
+            
+            let gore_points = geometry::Points::from_vec(piece.computed_points);
+            let no_seam = geometry::Points::from_vec(piece.points);
+            let (min, max) = gore_points.bounds();
+
+            let width = max.x - min.x;
+
+            let m_to_point = |x: f64,y: f64| {printpdf::Point::new(printpdf::Mm(x as f32 * 1000.0), printpdf::Mm(y as f32 * 1000.0))};
+
+            for point in &gore_points.points {
+                let vertex = (m_to_point(point.x + x_offset - min.x, point.y - min.y), false);
+                y_max = y_max.max(point.y - min.y);
+                polyline.push(vertex);
+            }
+
+            for point in &no_seam.points {
+                let vertex = (m_to_point(point.x + x_offset - min.x, point.y - min.y), false);
+                polyline_no_seam.push(vertex);
+            }
+
+            x_offset += width + 0.1; // 10 cm between
+            
+            all_lines.push(printpdf::Line {
+                points: polyline,
+                is_closed: true,
+            });
+            all_lines.push(printpdf::Line {
+                points: polyline_no_seam,
+                is_closed: true,
+            });
+        }
+
+        // TODO: add description/instruction text
+
+        let (doc, page1, layer1) = printpdf::PdfDocument::new(
+            "Gores", 
+            printpdf::Mm(x_offset as f32 * 1000.0), 
+            printpdf::Mm(y_max as f32 * 1000.0),
+            "Layer 1"
+        );
+        let current_layer = doc.get_page(page1).get_layer(layer1);
+
+        let fill_color = printpdf::Color::Cmyk(printpdf::Cmyk::new(0.0, 0.23, 0.0, 0.0, None));
+        let outline_color = printpdf::Color::Rgb(printpdf::Rgb::new(0.75, 1.0, 0.64, None));
+        let mut dash_pattern = printpdf::LineDashPattern::default();
+        dash_pattern.dash_1 = Some(20);
+
+        current_layer.set_fill_color(fill_color);
+        current_layer.set_outline_color(outline_color);
+        current_layer.set_outline_thickness(10.0);
+
+        for line in all_lines {
+            current_layer.add_line(line);
+        }
+
+        doc.save(&mut std::io::BufWriter::new(std::fs::File::create(path).unwrap())).unwrap();
 
     }
 
