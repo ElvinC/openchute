@@ -129,7 +129,7 @@ impl ChuteUI {
             }
             if ui.button("Export PDF").clicked() {
                 if let Some(path) = rfd::FileDialog::new().add_filter("*", &["pdf"]).save_file() {
-                    self.designer.export_pdf(path);   
+                    self.designer.export_pdf(path);
                 }
                 ui.close_menu();
             }
@@ -232,15 +232,15 @@ impl ChuteUI {
     
             self.designer.options_ui(ui, frame, self.state.use_imperial);
     
+            // TODO: Make it only update when underlying data changes
+            self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));
+
             self.designer.instructions_ui(ui, frame);
 
             ui = &mut columns[1];
             
             self.designer.draw_cross_section(ui, frame, None);
             self.designer.draw_gores(ui, frame, None);
-
-            // TODO: Make it only update when underlying data changes
-            self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));
 
         });
 
@@ -314,7 +314,9 @@ impl ChuteUI {
     fn save_project_file(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = rfd::FileDialog::new().add_filter("*", &["chute"]).save_file() {
-            std::fs::write(path, self.designer.to_json().unwrap());
+            std::fs::write(path.clone(), self.designer.to_json().unwrap());
+            self.state.display_filename = Some(path.file_name().unwrap().to_str().unwrap().to_owned());
+            self.state.project_file = Some(path);
         }
 
         #[cfg(target_arch = "wasm32")]

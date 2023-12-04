@@ -124,6 +124,11 @@ pub struct ChuteSection {
 
 impl ChuteSection {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext, index_id: u16) {
+        ui.heading(match self.section_type {
+            ChuteSectionType::Circular(_) => "Circular band",
+            ChuteSectionType::Polygonal(_) => "Polygonal geometry",
+        });
+        
         ui.label("Fabric:");
         self.fabric.ui(ui, frame, use_imperial, index_id);
         
@@ -205,19 +210,32 @@ impl ChuteSection {
                 ui.separator();
 
                 let mut to_delete: Option<usize> = None;
+                let mut to_move: Option<(usize, bool)> = None;
+                let num_parameters = sec.objects.len();
 
                 for (idx, object) in sec.objects.iter_mut().enumerate() {
-                    if ui.button("❌").clicked() {
-                        to_delete = Some(idx);
-                    }
-                    match object {
-                        GeometryType::Line(config) => config.ui(ui, frame, use_imperial, evaluator_context),
-                        GeometryType::EllipseArc(config) => config.ui(ui, frame, use_imperial, evaluator_context),
-                    }
+
+                    egui::Frame::none().stroke(egui::Stroke::new(1.0, egui::Color32::GRAY)).inner_margin(10.0).outer_margin(5.0).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui::delete_move_buttons(ui, &mut to_delete, &mut to_move, idx, num_parameters);
+                        });
+                        match object {
+                            GeometryType::Line(config) => config.ui(ui, frame, use_imperial, evaluator_context),
+                            GeometryType::EllipseArc(config) => config.ui(ui, frame, use_imperial, evaluator_context),
+                        }
+                    });
                 }
 
                 if let Some(delete_idx) = to_delete {
                     sec.objects.remove(delete_idx);
+                }
+                if let Some((idx, direction)) = to_move {
+                    if idx > 0 && direction {
+                        // Swap upwards
+                        sec.objects.swap(idx, idx-1);
+                    } else if idx < (sec.objects.len() - 1) && !direction{
+                        sec.objects.swap(idx, idx+1);
+                    }
                 }
 
             }
@@ -835,15 +853,7 @@ impl ChuteDesigner {
             for (idx, input_value) in self.input_values.iter_mut().enumerate() {
                 
                 ui.horizontal(|ui| {
-                    if ui.button("❌").clicked() {
-                        to_delete = Some(idx);
-                    };
-                    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                        to_move = Some((idx, true));
-                    }
-                    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                        to_move = Some((idx, false));
-                    };
+                    ui::delete_move_buttons(ui, &mut to_delete, &mut to_move, idx, num_parameters);
                 });
                 
                 ui.horizontal(|ui| {
@@ -962,15 +972,7 @@ impl ChuteDesigner {
                         body.row(20.0, |mut row| {
                             row.col(|ui| {
                                 ui.horizontal(|ui| {
-                                    if ui.button("❌").clicked() {
-                                        to_delete = Some(idx);
-                                    };
-                                    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                                        to_move = Some((idx, true));
-                                    }
-                                    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                                        to_move = Some((idx, false));
-                                    };
+                                    ui::delete_move_buttons(ui, &mut to_delete, &mut to_move, idx, num_parameters);
                                 });
                             });
                             row.col(|ui| {
@@ -1053,15 +1055,7 @@ impl ChuteDesigner {
                 let res = egui::Frame::none().stroke(egui::Stroke::new(1.0, egui::Color32::GRAY)).inner_margin(10.0).outer_margin(5.0).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            if ui.button("❌").clicked() {
-                                to_delete = Some(idx);
-                            };
-                            if ui.add_enabled(idx != 0, egui::Button::new("⬆")).clicked() {
-                                to_move = Some((idx, true));
-                            }
-                            if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).clicked() {
-                                to_move = Some((idx, false));
-                            };
+                            ui::delete_move_buttons(ui, &mut to_delete, &mut to_move, idx, num_parameters);
                         });
                         ui.separator();
                         ui.vertical(|ui| {
@@ -1149,11 +1143,22 @@ impl ChuteDesigner {
 
         let mut idx_offset: u32 = 0;
 
+        let mut bounds_min = [f64::INFINITY, f64::INFINITY];
+        let mut bounds_max = [f64::NEG_INFINITY, f64::NEG_INFINITY];
+
         for section in &self.chute_sections {
-            //let mut chute_cross = vec![];
+            //let mut chute_cross = vec![]; 
 
             let chute_cross = section.get_cross_section(60, true);
 
+            let (min, max) = chute_cross.bounds();
+
+            bounds_min[0] = bounds_min[0].min(min.x);
+            bounds_min[1] = bounds_min[1].min(min.y);
+
+            bounds_max[0] = bounds_max[0].max(max.x);
+            bounds_max[1] = bounds_max[1].max(max.y);
+            
             if chute_cross.points.len() < 2 {
                 continue;
             }
@@ -1228,6 +1233,16 @@ impl ChuteDesigner {
             //    new_colors.push(Srgba::new((((idx % (5 * num_points_per_gore))/num_points_per_gore * 255) % 256) as u8 , 0 as u8, 0 as u8, 255))
             //}
 
+        }
+
+        // Scale and offset chute_coords:
+
+        let scaling = 0.5 / (bounds_max[0] - bounds_min[0]).max(0.5 * (bounds_max[1] - bounds_min[1])).max(0.01) as f32; // Scaling factor
+        let offset_y = ((bounds_max[1] + bounds_min[1]) * 0.5) as f32;
+
+        for pt in chute_coords.iter_mut() {
+            (*pt).y -= offset_y;
+            *pt *= scaling;
         }
 
         if chute_coords.is_empty() {

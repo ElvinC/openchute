@@ -56,6 +56,18 @@ pub fn integer_edit_field(ui: &mut egui::Ui, value: &mut u16) -> egui::Response 
     res
 }
 
+pub fn delete_move_buttons(ui: &mut egui::Ui, to_delete: &mut Option<usize>, to_move: &mut Option<(usize, bool)>, idx: usize, num_parameters: usize) {
+    if ui.button("❌").on_hover_text("Delete").clicked() {
+        *to_delete = Some(idx);
+    }
+    if ui.add_enabled(idx != 0, egui::Button::new("⬆")).on_hover_text("Move up").clicked() {
+        *to_move = Some((idx, true));
+    }
+    if ui.add_enabled(idx < num_parameters - 1, egui::Button::new("⬇")).on_hover_text("Move down").clicked() {
+        *to_move = Some((idx, false));
+    };
+}
+
 // Linear dimension. metric=m, imperial=ft.
 // Always stored as m in backend
 pub fn dimension_field(ui: &mut egui::Ui, value_metric: &mut f64, use_imperial: bool, range: RangeInclusive<f64>) -> egui::Response {
@@ -252,7 +264,7 @@ impl ThreeDApp {
         // Create a camera
         let camera = Camera::new_perspective(
             Viewport::new_at_origo(1, 1),
-            vec3(0.0, 0.0, 5.0),
+            vec3(0.0, 0.0, 2.0),
             vec3(0.0, 0.0, 0.0),
             vec3(0.0, 1.0, 0.0),
             degrees(45.0),
