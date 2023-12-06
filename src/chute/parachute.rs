@@ -26,6 +26,7 @@ use uom::si::{self, length};
 use super::configurable_shapes::ConfigurableGeometry;
 use super::geometry::ToPoints;
 use super::configurable_shapes;
+use super::ui::integer_edit_field;
 use geometry::vec2;
 
 use serde::{Serialize, Deserialize};
@@ -112,6 +113,54 @@ pub enum ChuteSectionType {
     Circular(CircularChuteSection)
 }
 
+
+// For stuff like assymetrical gore top/bottom or cutouts
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub enum GoreModifier {
+    Nothing, // Don't modify
+    SlantSegmentLeft, // Slant whole segment
+    SlantSegmentRight, // Slant whole segment
+    SlantAngle(f64) // Slant by defined angle (in rad)
+}
+
+impl GoreModifier {
+    fn selector(ui: &mut egui::Ui, frame: &mut eframe::Frame, modifier: &mut GoreModifier, id: u16) {
+        ui.horizontal(|ui| {
+
+            egui::ComboBox::from_id_source(id)
+                .width(200.0)
+                .selected_text(modifier.to_string())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(modifier, GoreModifier::Nothing, "None");
+                    ui.selectable_value(modifier, GoreModifier::SlantSegmentLeft, "Slant segment left");
+                    ui.selectable_value(modifier, GoreModifier::SlantSegmentRight, "Slant segment right");
+                    ui.selectable_value(modifier, GoreModifier::SlantAngle(std::f64::consts::FRAC_PI_4), "Slant by angle");
+                }
+            );
+
+            match modifier {
+                GoreModifier::SlantAngle(angle) => {
+                    ui::length_slider_no_limit(ui, angle, false, -std::f64::consts::FRAC_PI_2..=std::f64::consts::FRAC_PI_2, &si::angle::degree, &si::angle::degree);
+
+                },
+                _ => {}
+            }
+
+        });
+    }
+}
+
+impl core::fmt::Display for GoreModifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GoreModifier::Nothing => write!(f, "None"),
+            GoreModifier::SlantSegmentLeft => write!(f, "Slant segment left"),
+            GoreModifier::SlantSegmentRight => write!(f, "Slant segment right"),
+            GoreModifier::SlantAngle(_) => write!(f, "Slant with angle")
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChuteSection {
     section_type: ChuteSectionType,
@@ -120,6 +169,9 @@ pub struct ChuteSection {
     seam_allowance: (f64, f64, f64, f64), // Right, top, left, bottom
     corner_cutout: bool,
     colors: Vec<[f32; 3]>, // Colors. If less than number of gores, it continues repeating
+    modifier_first: GoreModifier, // Modifier for first thing in list
+    modifier_last: GoreModifier, // Modifier for last thing in list
+    cuts: Vec<(f64, f64)>, // Cuts given in vertical ratio (0-1) and angle (in rad)
 }
 
 impl ChuteSection {
@@ -148,6 +200,13 @@ impl ChuteSection {
 
         ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
         ui::integer_edit_field(ui, &mut self.gores);
+
+        ui.label("Shape modifier first");
+        GoreModifier::selector(ui, frame, &mut self.modifier_first, 1);
+
+        ui.label("Shape modifier last");
+        GoreModifier::selector(ui, frame, &mut self.modifier_last, 2);
+
 
         ui.horizontal(|ui| {
             ui.label("Color:");
@@ -265,6 +324,9 @@ impl ChuteSection {
             seam_allowance: (0.01, 0.01, 0.01, 0.01),
             colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]],
             corner_cutout: false,
+            modifier_first: GoreModifier::Nothing,
+            modifier_last: GoreModifier::Nothing,
+            cuts: vec![],
         }
     }
 
@@ -276,6 +338,9 @@ impl ChuteSection {
             seam_allowance: (0.01, 0.01, 0.01, 0.01),
             colors: vec![[1.0, 0.31, 0.0], [0.0, 0.0, 0.0]],
             corner_cutout: false,
+            modifier_first: GoreModifier::Nothing,
+            modifier_last: GoreModifier::Nothing,
+            cuts: vec![],
         }
     }
 
@@ -306,6 +371,38 @@ impl ChuteSection {
                 }
 
                 pts
+            }
+        }
+    }
+
+    fn get_cross_section_with_indices(&self, resolution: u32, expanded_polygon: bool) -> (geometry::Points, Vec<usize>) {
+        // to 2D section
+        let mut segment_indices = vec![];
+
+        match &self.section_type {
+            ChuteSectionType::Circular(circ) => {
+                (circ.line.to_points(resolution), segment_indices)
+            },
+            ChuteSectionType::Polygonal(poly) => {
+                let mut pts = geometry::Points::new();
+
+                for object in &poly.objects {
+                    segment_indices.push(pts.points.len());
+                    if expanded_polygon {
+                        let mut cross_section = object.to_points(resolution).points;
+                        let expansion_ratio = geometry::polygon_to_circle_expansion(self.gores);
+                        cross_section.iter_mut().for_each(|pt| {
+                            pt.x *= expansion_ratio;
+                        });
+
+                        pts.points.append(&mut cross_section);
+                    } else {
+                        pts.points.append(&mut object.to_points(resolution).points);
+                    }
+                }
+
+                segment_indices.push(pts.points.len()); // Last one
+                (pts, segment_indices)
             }
         }
     }
@@ -480,9 +577,11 @@ impl ChuteSection {
 
                 piece.set_corner_cutout(self.corner_cutout);
 
-                let mut cross_section = self.get_cross_section(resolution, true);
+                let (mut cross_section, sec_indices) = self.get_cross_section_with_indices(resolution, true);
 
-                if cross_section.points.len() < 2 {
+                let num_points = cross_section.points.len();
+
+                if num_points < 2 {
                     // Must have at least two points
                     return piece;
                 }
@@ -497,7 +596,7 @@ impl ChuteSection {
                 let polygon_side_distance = geometry::polygon_center_to_side(self.gores);
                 let polygon_side_length = geometry::polygon_edge_len(self.gores);
 
-                for idx in 0..cross_section.points.len()-1 {
+                for idx in 0..num_points-1 {
                     let this_pt = cross_section.points.get(idx).unwrap();
                     let next_pt = cross_section.points.get(idx+1).unwrap();
                     let diff = (((this_pt.x - next_pt.x) * polygon_side_distance).powi(2) + (this_pt.y - next_pt.y).powi(2)).sqrt();
@@ -507,6 +606,51 @@ impl ChuteSection {
                 }
 
                 let mut left_points = right_points.mirror_x();
+
+                let num_gore_points = right_points.points.len();
+
+                if sec_indices.len() > 1 { // At least one valid segment (two pairs)
+                    // Delete points to modify the shape
+                    match &self.modifier_last {
+                        // Last points. Drain these first
+                        GoreModifier::Nothing => {},
+                        GoreModifier::SlantSegmentLeft => {
+                            if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
+                                // +1 keeps the first point
+                                left_points.points.drain((idx.clone() + 1 as usize).min(num_gore_points)..num_gore_points);
+                            }
+                        },
+                        GoreModifier::SlantSegmentRight => {
+                            if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
+                                right_points.points.drain((idx.clone() + 1 as usize).min(num_gore_points)..num_gore_points);
+                            }
+                        },
+                        GoreModifier::SlantAngle(angle) => {
+                            todo!()
+                        }
+                    }
+                    
+                    match &self.modifier_first {
+                        // First points. Drain these afterwards
+                        GoreModifier::Nothing => {},
+                        GoreModifier::SlantSegmentLeft => {
+                            if let Some(idx) = sec_indices.get(1) {
+                                let end = idx.clone().min(right_points.points.len().max(1) - 1);
+                                right_points.points.drain(0..end);
+                            }
+                        },
+                        GoreModifier::SlantSegmentRight => {
+                            if let Some(idx) = sec_indices.get(1) {
+                                let end = idx.clone().min(left_points.points.len().max(1) - 1);
+                                left_points.points.drain(0..end);
+                            }
+                        },
+                        GoreModifier::SlantAngle(angle) => {
+                            todo!()
+                        }
+                    }
+                }
+
                 left_points.points.reverse();
                 let top_points = vec![right_points.get_last_point(), left_points.get_first_point()];
                 let bottom_points = vec![left_points.get_last_point(), right_points.get_first_point()];
@@ -1236,7 +1380,6 @@ impl ChuteDesigner {
         }
 
         // Scale and offset chute_coords:
-
         let scaling = 0.5 / (bounds_max[0] - bounds_min[0]).max(0.5 * (bounds_max[1] - bounds_min[1])).max(0.01) as f32; // Scaling factor
         let offset_y = ((bounds_max[1] + bounds_min[1]) * 0.5) as f32;
 
@@ -1576,6 +1719,24 @@ impl Segment {
 
     fn get_last_point(&self) -> na::Vector2<f64> {
         self.points.last().unwrap().clone()
+    }
+
+    fn all_equal(&self) -> bool {
+        // check if all points are the same
+        // Also false if 0 or 1 points present
+        if self.points.len() <= 1 {
+            return false;
+        }
+
+        let pt1 = self.points.first().unwrap().clone();
+
+        for pt in &self.points {
+            if (pt1 - pt).norm_squared() > 1e-6 {
+                // not equal
+                return false;
+            }
+        }
+        true
     }
 }
 

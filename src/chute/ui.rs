@@ -40,6 +40,33 @@ I: uom::Conversion<f64> + si::Unit
     res
 }
 
+// Slider for handling a length including unit conversions
+pub fn length_slider_no_limit<S,I>(ui: &mut egui::Ui, value_m: &mut f64, use_imperial: bool, range: RangeInclusive<f64>, si_unit: &S, imperial_unit: &I) -> egui::Response
+where
+S: uom::Conversion<f64> + si::Unit,
+I: uom::Conversion<f64> + si::Unit
+{    
+    let unit_abbrev = if use_imperial { I::abbreviation() } else { S::abbreviation() };
+    let conversion_factor = if use_imperial { imperial_unit.conversion().value() } else { si_unit.conversion().value() };;
+
+
+    let mut value = *value_m / conversion_factor;
+    let new_range = (range.start() / conversion_factor).round() ..= (range.end() / conversion_factor).round();
+
+
+    let field = egui::Slider::new::<f64>(&mut value, new_range)
+                            .text(format!("[{}]", unit_abbrev))
+                            .clamp_to_range(false);
+    
+    let res = ui.add(field)
+                          .context_menu(|ui| {
+                            if ui.button("Reset value").clicked() {
+                                ui.close_menu();
+                                todo!();
+                            }
+                        });
+    res
+}
 
 pub fn integer_edit_field(ui: &mut egui::Ui, value: &mut u16) -> egui::Response {
     let field = egui::Slider::new::<u16>(value, 4..=24)
