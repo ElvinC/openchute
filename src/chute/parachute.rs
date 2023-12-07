@@ -202,10 +202,10 @@ impl ChuteSection {
         ui::integer_edit_field(ui, &mut self.gores);
 
         ui.label("Shape modifier first");
-        GoreModifier::selector(ui, frame, &mut self.modifier_first, 1);
+        GoreModifier::selector(ui, frame, &mut self.modifier_first, index_id * 2);
 
         ui.label("Shape modifier last");
-        GoreModifier::selector(ui, frame, &mut self.modifier_last, 2);
+        GoreModifier::selector(ui, frame, &mut self.modifier_last, index_id*2 + 1);
 
 
         ui.horizontal(|ui| {
@@ -579,9 +579,7 @@ impl ChuteSection {
 
                 let (mut cross_section, sec_indices) = self.get_cross_section_with_indices(resolution, true);
 
-                let num_points = cross_section.points.len();
-
-                if num_points < 2 {
+                if cross_section.points.len() < 2 {
                     // Must have at least two points
                     return piece;
                 }
@@ -596,7 +594,7 @@ impl ChuteSection {
                 let polygon_side_distance = geometry::polygon_center_to_side(self.gores);
                 let polygon_side_length = geometry::polygon_edge_len(self.gores);
 
-                for idx in 0..num_points-1 {
+                for idx in 0..cross_section.points.len()-1 {
                     let this_pt = cross_section.points.get(idx).unwrap();
                     let next_pt = cross_section.points.get(idx+1).unwrap();
                     let diff = (((this_pt.x - next_pt.x) * polygon_side_distance).powi(2) + (this_pt.y - next_pt.y).powi(2)).sqrt();
@@ -1293,7 +1291,7 @@ impl ChuteDesigner {
         for section in &self.chute_sections {
             //let mut chute_cross = vec![]; 
 
-            let chute_cross = section.get_cross_section(60, true);
+            let (chute_cross, sec_indices) = section.get_cross_section_with_indices(60, true);
 
             let (min, max) = chute_cross.bounds();
 
@@ -1308,7 +1306,6 @@ impl ChuteDesigner {
             }
 
             let mut chute_cross: Vec<three_d::Vector2<f32>> = chute_cross.points.iter().map(|pt| three_d::vec2(pt.x as f32, pt.y as f32)).collect();
-
             let num_gores = section.gores as usize;
 
             if num_gores == 0 {
@@ -1316,6 +1313,56 @@ impl ChuteDesigner {
                 continue;
             }
 
+            // Left right
+            let pt_modifier_min = match &section.modifier_first {
+                // First points. Drain these afterwards
+                GoreModifier::Nothing => {(0,0)},
+                GoreModifier::SlantSegmentLeft => {
+                    if let Some(idx) = sec_indices.get(1) {
+                        let end = idx.clone().min(chute_cross.len().max(1) - 1);
+                        (0,end)
+                    } else {
+                        (0,0)
+                    }
+                },
+                GoreModifier::SlantSegmentRight => {
+                    if let Some(idx) = sec_indices.get(1) {
+                        let end = idx.clone().min(chute_cross.len().max(1) - 1);
+                        (end, 0)
+                    } else {
+                        (0,0)
+                    }
+                },
+                GoreModifier::SlantAngle(angle) => {
+                    todo!()
+                }
+            };
+
+            let last_idx = chute_cross.len()-1;
+
+            let pt_modifier_max =  match &section.modifier_last {
+                // Last points. Drain these first
+                GoreModifier::Nothing => { (last_idx, last_idx) },
+                GoreModifier::SlantSegmentLeft => {
+                    if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
+                        let end = (idx.clone() as usize).min(last_idx);
+                        (end, last_idx)
+                    } else {
+                        (last_idx, last_idx)
+                    }
+                },
+                GoreModifier::SlantSegmentRight => {
+                    if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
+                        let end = (idx.clone() + 1 as usize).min(last_idx);
+                        (last_idx, end)
+                    } else {
+                        (last_idx, last_idx)
+                    }
+                },
+                GoreModifier::SlantAngle(angle) => {
+                    todo!()
+                }
+            };
 
             for idx in 0..num_gores {
                 let z_angle = idx as f32 / (num_gores as f32) * core::f32::consts::PI * 2.0;
@@ -1330,15 +1377,26 @@ impl ChuteDesigner {
 
             // Generate triangles. 
             for gore_idx in 0..num_gores {
+                let gore_offset_left = ((gore_idx*2+1) * num_points_per_gore) as u32;
+                let gore_offset_right = ((((gore_idx*2+1) + 1) % (num_gores * 2)) * num_points_per_gore) as u32;
                 // Each gore
                 for point_idx in 0..(num_points_per_gore-1) {
+                    // Set minimum and maximum in order to show gore geometry modifiers
+                    let (min_left, min_right, max_left, max_right) = if gore_idx % 2 == 0 {
+                        (pt_modifier_min.0, pt_modifier_min.1, pt_modifier_max.0, pt_modifier_max.1)
+                    } else {
+                        (pt_modifier_min.1, pt_modifier_min.0, pt_modifier_max.1, pt_modifier_max.0)
+                    };
+
                     // Each point on the left of that gore
+                    let pt_offset_first = (point_idx).max(min_left) as u32;
+                    let pt_offset_last = (point_idx + 1).max(min_left) as u32;
 
                     // Get four points forming a square
-                    let pt_left0 = ((gore_idx*2+1) * num_points_per_gore + point_idx) as u32;
-                    let pt_left1 = pt_left0 + 1;
-                    let pt_right0 = ((((gore_idx*2+1) + 1) % (num_gores * 2)) * num_points_per_gore + point_idx) as u32;
-                    let pt_right1 = pt_right0 + 1;
+                    let pt_left0 = gore_offset_left + (point_idx).max(min_left).min(max_left) as u32;
+                    let pt_left1 = gore_offset_left + (point_idx + 1).max(min_left).min(max_left) as u32;
+                    let pt_right0 = gore_offset_right + (point_idx).max(min_right).min(max_right) as u32;
+                    let pt_right1 = gore_offset_right + (point_idx + 1).max(min_right).min(max_right) as u32;
                     
                     // Two triangles forming a square
                     // Order counterclockwise
@@ -1380,7 +1438,7 @@ impl ChuteDesigner {
         }
 
         // Scale and offset chute_coords:
-        let scaling = 0.5 / (bounds_max[0] - bounds_min[0]).max(0.5 * (bounds_max[1] - bounds_min[1])).max(0.01) as f32; // Scaling factor
+        let scaling = 0.5 / (bounds_max[0]).max(0.5 * (bounds_max[1] - bounds_min[1])).max(0.01) as f32; // Scaling factor
         let offset_y = ((bounds_max[1] + bounds_min[1]) * 0.5) as f32;
 
         for pt in chute_coords.iter_mut() {
