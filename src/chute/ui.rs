@@ -280,7 +280,7 @@ pub struct ThreeDApp {
     context: Context,
     camera: Camera,
     model: Gm<Mesh, PhysicalMaterial>,
-    light0: DirectionalLight,
+    light0: AmbientLight,
     light1: DirectionalLight,
     control: OrbitControl,
 }
@@ -416,8 +416,8 @@ impl ThreeDApp {
             ),
         );
 
-        let light0 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, &vec3(0.0, -0.5, -0.5));
-        let light1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, &vec3(0.0, 0.5, 0.5));
+        let light0 = AmbientLight::new(&context, 0.8, Srgba::WHITE);
+        let light1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, &vec3(0.0, -0.5, -0.5));
 
 
         let mut control = OrbitControl::new(*camera.target(), 1.0, 100.0);

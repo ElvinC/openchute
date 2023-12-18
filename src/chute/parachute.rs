@@ -120,6 +120,8 @@ pub enum GoreModifier {
     Nothing, // Don't modify
     SlantSegmentLeft, // Slant whole segment
     SlantSegmentRight, // Slant whole segment
+    TriangleSegmentIn, // Triangle pointing inwards
+    TriangleSegmentOut, // Triangle pointing outwards
     SlantAngle(f64) // Slant by defined angle (in rad)
 }
 
@@ -134,6 +136,8 @@ impl GoreModifier {
                     ui.selectable_value(modifier, GoreModifier::Nothing, "None");
                     ui.selectable_value(modifier, GoreModifier::SlantSegmentLeft, "Slant segment left");
                     ui.selectable_value(modifier, GoreModifier::SlantSegmentRight, "Slant segment right");
+                    ui.selectable_value(modifier, GoreModifier::TriangleSegmentIn, "Triangle segment inwards");
+                    ui.selectable_value(modifier, GoreModifier::TriangleSegmentOut, "Triangle segment outwards");
                     ui.selectable_value(modifier, GoreModifier::SlantAngle(std::f64::consts::FRAC_PI_4), "Slant by angle");
                 }
             );
@@ -156,7 +160,9 @@ impl core::fmt::Display for GoreModifier {
             GoreModifier::Nothing => write!(f, "None"),
             GoreModifier::SlantSegmentLeft => write!(f, "Slant segment left"),
             GoreModifier::SlantSegmentRight => write!(f, "Slant segment right"),
-            GoreModifier::SlantAngle(_) => write!(f, "Slant with angle")
+            GoreModifier::SlantAngle(_) => write!(f, "Slant with angle"),
+            GoreModifier::TriangleSegmentIn => write!(f, "Triangle segment inwards"),
+            GoreModifier::TriangleSegmentOut => write!(f, "Triangle segment outwards")
         }
     }
 }
@@ -607,6 +613,9 @@ impl ChuteSection {
 
                 let num_gore_points = right_points.points.len();
 
+                let mut top_points = None;
+                let mut bottom_points = None;
+
                 if sec_indices.len() > 1 { // At least one valid segment (two pairs)
                     // Delete points to modify the shape
                     match &self.modifier_last {
@@ -625,6 +634,16 @@ impl ChuteSection {
                         },
                         GoreModifier::SlantAngle(angle) => {
                             todo!()
+                        },
+                        GoreModifier::TriangleSegmentIn => {
+                            if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
+                                let middle_point_idx = (idx.clone()).min(num_gore_points-1);
+                                let middle_point = (left_points.points[middle_point_idx] + right_points.points[middle_point_idx]) * 0.5;
+                                top_points = Some(vec![right_points.get_last_point(), middle_point, left_points.get_last_point()]);
+                            }
+                        },
+                        _ => {
+
                         }
                     }
                     
@@ -645,19 +664,29 @@ impl ChuteSection {
                         },
                         GoreModifier::SlantAngle(angle) => {
                             todo!()
+                        },
+                        GoreModifier::TriangleSegmentIn => {
+                            if let Some(idx) = sec_indices.get(1) {
+                                let middle_point_idx = (idx.clone()).min(left_points.points.len().max(1) - 1);
+                                let middle_point = (left_points.points[middle_point_idx] + right_points.points[middle_point_idx]) * 0.5;
+                                bottom_points = Some(vec![left_points.get_first_point(), middle_point, right_points.get_first_point()]);
+                            }
+                        },
+                        _ => {
+
                         }
                     }
                 }
 
                 left_points.points.reverse();
-                let top_points = vec![right_points.get_last_point(), left_points.get_first_point()];
-                let bottom_points = vec![left_points.get_last_point(), right_points.get_first_point()];
+                let top_pts = top_points.unwrap_or(vec![right_points.get_last_point(), left_points.get_first_point()]);
+                let bottom_pts = bottom_points.unwrap_or(vec![left_points.get_last_point(), right_points.get_first_point()]);
 
 
                 piece.add_segment(Segment::from_vec(right_points.points, self.seam_allowance.0));
-                piece.add_segment(Segment::from_vec(top_points, self.seam_allowance.1));
+                piece.add_segment(Segment::from_vec(top_pts, self.seam_allowance.1));
                 piece.add_segment(Segment::from_vec(left_points.points, self.seam_allowance.2));
-                piece.add_segment(Segment::from_vec(bottom_points, self.seam_allowance.3));
+                piece.add_segment(Segment::from_vec(bottom_pts, self.seam_allowance.3));
 
                 return piece;
             }
@@ -680,6 +709,7 @@ pub enum StandardUnit {
     #[default] UnitLess, // Can be used if other SI units are needed
     MeterFoot,
     MillimeterInch,
+    CentimeterInch,
     Radian,
     Degree,
 }
@@ -690,6 +720,7 @@ impl StandardUnit {
             Self::UnitLess,
             Self::MeterFoot,
             Self::MillimeterInch,
+            Self::CentimeterInch,
             Self::Radian,
             Self::Degree,
         ]
@@ -700,6 +731,7 @@ impl StandardUnit {
             Self::UnitLess => "unitless".into(),
             Self::MeterFoot => "m | ft".into(),
             Self::MillimeterInch => "mm | in".into(),
+            Self::CentimeterInch => "cm | in".into(),
             Self::Radian => "rad".into(),
             Self::Degree => "deg".into(),
         }
@@ -831,6 +863,7 @@ impl ChuteDesigner {
                     StandardUnit::UnitLess => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &unitless, &unitless),
                     StandardUnit::MeterFoot => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::meter, &length::foot),
                     StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
+                    StandardUnit::CentimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::centimeter, &length::inch),
                     StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
                     StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
                 };
@@ -1023,6 +1056,7 @@ impl ChuteDesigner {
                         StandardUnit::UnitLess => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &unitless, &unitless),
                         StandardUnit::MeterFoot => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::meter, &length::foot),
                         StandardUnit::MillimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::millimeter, &length::inch),
+                        StandardUnit::CentimeterInch => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &length::centimeter, &length::inch),
                         StandardUnit::Degree => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::degree, &si::angle::degree),
                         StandardUnit::Radian => ui::length_slider(ui, &mut input_value.value, use_imperial, input_value.range.clone(), &si::angle::radian, &si::angle::radian),
                     }                
@@ -1320,7 +1354,7 @@ impl ChuteDesigner {
                 GoreModifier::SlantSegmentLeft => {
                     if let Some(idx) = sec_indices.get(1) {
                         let end = idx.clone().min(chute_cross.len().max(1) - 1);
-                        (0,end)
+                        (end,0)
                     } else {
                         (0,0)
                     }
@@ -1328,13 +1362,16 @@ impl ChuteDesigner {
                 GoreModifier::SlantSegmentRight => {
                     if let Some(idx) = sec_indices.get(1) {
                         let end = idx.clone().min(chute_cross.len().max(1) - 1);
-                        (end, 0)
+                        (0,end)
                     } else {
                         (0,0)
                     }
                 },
                 GoreModifier::SlantAngle(angle) => {
                     todo!()
+                },
+                _ => {
+                    (0, 0)
                 }
             };
 
@@ -1346,21 +1383,24 @@ impl ChuteDesigner {
                 GoreModifier::SlantSegmentLeft => {
                     if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
                         let end = (idx.clone() as usize).min(last_idx);
-                        (end, last_idx)
+                        (last_idx, end)
                     } else {
                         (last_idx, last_idx)
                     }
                 },
                 GoreModifier::SlantSegmentRight => {
                     if let Some(idx) = sec_indices.get(sec_indices.len()-2) {
-                        let end = (idx.clone() + 1 as usize).min(last_idx);
-                        (last_idx, end)
+                        let end = (idx.clone() as usize).min(last_idx);
+                        (end, last_idx)
                     } else {
                         (last_idx, last_idx)
                     }
                 },
                 GoreModifier::SlantAngle(angle) => {
                     todo!()
+                },
+                _ => {
+                    (last_idx, last_idx)
                 }
             };
 
@@ -1614,7 +1654,13 @@ impl ChuteDesigner {
             current_layer.add_line(line);
         }
 
+        let mut backup_path = path.clone();
+        backup_path.set_extension("pdf.chute");
+
         doc.save(&mut std::io::BufWriter::new(std::fs::File::create(path).unwrap())).unwrap();
+
+        // Backup the parachute file
+        std::fs::write(backup_path, self.to_json().unwrap());
 
     }
 
@@ -1847,16 +1893,23 @@ impl PatternPiece {
             return;
         }
 
-        for idx in 1..=segments.len() {
-            // Delete last point in segment until it's unique
+        // Use last point so it wraps around
+        let mut last_pt = segments.last().unwrap().points.last().unwrap().clone(); 
+
+        for (seg_idx,seg) in segments.iter_mut().enumerate() {
+            let mut points_to_delete: Vec<(usize)> = vec![];
+
+            for (pt_idx, pt) in seg.points.iter().enumerate() {
+                if (pt - last_pt).norm_squared() < 1e-6 {
+                    points_to_delete.push((pt_idx));
+                } else {
+                    last_pt = pt.clone();
+                }
+            }
             
-            let idx_this = idx % segments.len();
-            let idx_next = (idx + 1) % segments.len();
-
-            let next_start = segments[idx_next].points.first().unwrap_or(&vec2(f64::NAN, f64::NAN)).clone();
-
-            while segments[idx_this].points.last().is_some_and(|pt| (pt - next_start).norm_squared() < 1e-6) {
-                segments[idx_this].points.pop();
+            // Remove duplicates from back
+            for delete_idx in points_to_delete.iter().rev() {
+                seg.points.remove(delete_idx.clone());
             }
         }
 
