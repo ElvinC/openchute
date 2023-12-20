@@ -1893,22 +1893,22 @@ impl PatternPiece {
             return;
         }
 
-        // Use last point so it wraps around
-        let mut last_pt = segments.last().unwrap().points.last().unwrap().clone(); 
+        // Use first point, and go through in reverse order
+        let mut last_pt = segments.first().unwrap().points.first().unwrap().clone(); 
 
-        for (seg_idx,seg) in segments.iter_mut().enumerate() {
-            let mut points_to_delete: Vec<(usize)> = vec![];
-
-            for (pt_idx, pt) in seg.points.iter().enumerate() {
+        for (seg_idx,seg) in segments.iter_mut().rev().enumerate() {
+            let mut points_to_delete: Vec<usize> = vec![];
+            let seg_len = seg.points.len();
+            for (pt_idx, pt) in seg.points.iter().rev().enumerate() {
                 if (pt - last_pt).norm_squared() < 1e-6 {
-                    points_to_delete.push((pt_idx));
+                    points_to_delete.push(seg_len - 1 - pt_idx);
                 } else {
                     last_pt = pt.clone();
                 }
             }
             
             // Remove duplicates from back
-            for delete_idx in points_to_delete.iter().rev() {
+            for delete_idx in points_to_delete.iter() {
                 seg.points.remove(delete_idx.clone());
             }
         }
