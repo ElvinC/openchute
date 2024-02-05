@@ -30,6 +30,9 @@ evalexpr = "11.2.0"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 printpdf = "0.6.0"
+three-d-asset = {version = "0.6",features = ["obj", "png", "jpeg"] }
+
+
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

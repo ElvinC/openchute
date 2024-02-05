@@ -139,12 +139,18 @@ pub struct Widget3D {
 
 impl Widget3D {
     pub fn handle_triangle(&mut self, ui: &mut egui::Ui, meshes: Option<Vec<CpuMesh>>) {
+        
     
         egui::Frame::canvas(ui.style()).show(ui, |ui| {
             let (rect, response) =
                 ui.allocate_exact_size(egui::Vec2::splat(512.0), egui::Sense::drag());
 
-            let angle_delta = (response.drag_delta().x, response.drag_delta().y);
+            let (angle_delta, zoom_delta) =  if response.dragged_by(egui::PointerButton::Secondary) {
+                ((0.0, 0.0), (-response.drag_delta().y + response.drag_delta().x) * 0.05 )
+            } else {
+                ((response.drag_delta().x, response.drag_delta().y), 0.0)
+            };
+            
             self.angle_x += angle_delta.0 * 0.01;
             self.angle_y += angle_delta.1 * 0.01;
 
@@ -158,7 +164,7 @@ impl Widget3D {
                         with_three_d(painter.gl(), |three_d| {
                             three_d.frame(
                                 FrameInput::new(&three_d.context, &info, painter),
-                                angle,
+                                zoom_delta,
                                 angle_delta,
                                 meshes.clone()
                             );
@@ -170,7 +176,7 @@ impl Widget3D {
         });
         ui.label("Drag to rotate!");
 
-    }   
+    }
 }
 
 
@@ -283,6 +289,7 @@ pub struct ThreeDApp {
     light0: AmbientLight,
     light1: DirectionalLight,
     control: OrbitControl,
+    //scale: three_d::Model<three_d::PhysicalMaterial>,
 }
 
 impl ThreeDApp {
@@ -296,100 +303,17 @@ impl ThreeDApp {
             vec3(0.0, 1.0, 0.0),
             degrees(45.0),
             0.1,
-            10.0,
+            100.0,
         );
 
-        // Create a CPU-side mesh consisting of a single colored triangle
-        let positions = vec![
-            vec3(0.0, 0.0, 0.0),  // bottom right
-            vec3(1.0, 0.0, 0.0), // bottom left
-            vec3(0.0, 1.0, 0.0),   // top
-            vec3(0.0, 0.0, 1.0),
-        ];
-        let colors = vec![
-            Srgba::new(255, 0, 0, 255), // bottom right
-            Srgba::new(0, 255, 0, 255), // bottom left
-            Srgba::new(0, 0, 255, 255), // top
-            Srgba::new(0, 100, 255, 255),
-        ];
-        let indices = vec![1, 0, 2, 2, 0, 3, 3, 0, 1];
+        //let mut loaded = three_d_asset::io::load(&["../assets/penguin.obj"]).unwrap();
 
-        /*
-        let mut cpu_mesh = CpuMesh {
-            positions: Positions::F32(positions),
-            colors: Some(colors),
-            indices: Indices::U32(indices),
-            ..Default::default()
-        };
-
-        let mut chute_cross = vec![];
-
-        // Make cross section. Aligned with x y axis (y axis is up)
-        for ang in 0..80 {
-            chute_cross.push(vec3((ang as f32 * PI/180.0).cos(),(ang as f32 * PI/180.0).sin() * 0.7, 0.0));
-        }
-        let num_points_per_gore = chute_cross.len();
-
-        let mut chute_coords: Vec<Vector3<f32>> = vec![];
-
-        // revolve around y axis
-        let num_gores = 16;
-        for idx in 0..num_gores {
-            let z_angle = idx as f32 / (num_gores as f32) * PI * 2.0;
-            let cos_sin = (z_angle.cos(), z_angle.sin());
-            // Append twice to allow per gore coloring
-            chute_coords.append(&mut chute_cross.iter().map(|&pt| vec3(pt.x * cos_sin.0, pt.y, pt.x * cos_sin.1) ).collect::<Vec<_>>());
-            chute_coords.append(&mut chute_cross.iter().map(|&pt| vec3(pt.x * cos_sin.0, pt.y, pt.x * cos_sin.1) ).collect::<Vec<_>>());
-        }
-
-        let mut triangle_indices: Vec<u32> = vec![];
-        // Generate triangles. 
-        for gore_idx in 0..num_gores {
-            // Each gore
-            for point_idx in 0..(num_points_per_gore-1) {
-                // Each point on the left of that gore
-
-                // Get four points forming a square
-                let pt_left0 = ((gore_idx*2+1) * num_points_per_gore + point_idx) as u32;
-                let pt_left1 = pt_left0 + 1;
-                let pt_right0 = ((((gore_idx*2+1) + 1) % (num_gores * 2)) * num_points_per_gore + point_idx) as u32;
-                let pt_right1 = pt_right0 + 1;
-                
-                // Two triangles forming a square
-                // Order counterclockwise
-                triangle_indices.append(&mut vec![pt_left0, pt_right0, pt_left1, pt_right0, pt_right1, pt_left1]);
-            }            
-        }
-
-        let mut cpu_mesh = CpuMesh {
-            positions: Positions::F32(chute_coords),
-            indices: Indices::U32(triangle_indices),
-            ..Default::default()
-        };
-        
-
-        //let mut cpu_mesh = CpuMesh::cube();
-
-        let mut new_colors: Vec<Srgba> = vec![];
-
-        for j in 0..num_points_per_gore {
-            new_colors.push(Srgba::new(255, 0, 0, 255));
-        }
-
-        for i in 0..num_gores {
-            for j in 0..num_points_per_gore {
-                new_colors.push(Srgba::new((i % 2) as u8 * 255, 0, 0, 255));
-                new_colors.push(Srgba::new((i % 2) as u8 * 255, 0, 0, 255));
-            }
-        }
-
-        //for idx in 0..cpu_mesh.vertex_count() {
-        //    new_colors.push(Srgba::new((((idx % (5 * num_points_per_gore))/num_points_per_gore * 255) % 256) as u8 , 0 as u8, 0 as u8, 255))
-        //}
-        cpu_mesh.colors = Some(new_colors);
-
-        cpu_mesh.compute_normals();
-         */
+        //let model: CpuModel = loaded.deserialize("penguin.obj").unwrap();
+        //let mut scale = Model::<PhysicalMaterial>::new(&context, &model).unwrap();
+        //scale.iter_mut().for_each(|m| {
+        //    m.set_transformation(Mat4::from_translation(vec3(0.0, -0.7, 0.0)) * Mat4::from_scale(0.3/2.0));
+        //    m.material.render_states.cull = Cull::Back;
+        //});
         let mut des = crate::parachute::ChuteDesigner::default();
         des.update_calculations();
         let mut cpu_mesh = crate::parachute::ChuteDesigner::default().get_3d_data()[0].clone();
@@ -419,7 +343,6 @@ impl ThreeDApp {
         let light0 = AmbientLight::new(&context, 0.8, Srgba::WHITE);
         let light1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, &vec3(0.0, -0.5, -0.5));
 
-
         let mut control = OrbitControl::new(*camera.target(), 1.0, 100.0);
 
         Self {
@@ -429,14 +352,21 @@ impl ThreeDApp {
             light0,
             light1,
             control,
+            //scale
         }
     }
 
-    pub fn frame(&mut self, frame_input: FrameInput<'_>, angle: (f32, f32), angle_delta: (f32, f32), meshes: Option<Vec<CpuMesh>>) -> Option<glow::Framebuffer> {
+    pub fn frame(&mut self, frame_input: FrameInput<'_>, zoom_delta: f32, angle_delta: (f32, f32), meshes: Option<Vec<CpuMesh>>) -> Option<glow::Framebuffer> {
         // Ensure the viewport matches the current window viewport which changes if the window is resized
         self.camera.set_viewport(frame_input.viewport);
-        self.camera.rotate_around_with_fixed_up(&vec3(0.0, 0.0, 0.0), angle_delta.0 * 0.1, angle_delta.1 * 0.1);
+        let cam_distance = self.camera.position().magnitude().max(0.1);
+        self.camera.rotate_around_with_fixed_up(&vec3(0.0, 0.0, 0.0), angle_delta.0 * 0.03 * cam_distance, angle_delta.1 * 0.03 * cam_distance);
+        self.camera.zoom_towards(&vec3(0.0, 0.0, 0.0), zoom_delta * cam_distance * 0.1, 0.1, 100.0);
         
+        //self.scale.iter_mut().for_each(|m| {
+        //    m.set_transformation(Mat4::from_translation(vec3(0.0, -0.5, 0.0)) * Mat4::from_scale(0.4));
+        //});
+
         // Set the current transformation of the triangle
         //self.model
         //    .set_transformation(Mat4::from_angle_x(radians(angle.1)) * Mat4::from_angle_y(radians(angle.0)));
@@ -457,7 +387,7 @@ impl ThreeDApp {
             // Clear the color and depth of the screen render target
             .clear_partially(frame_input.scissor_box, ClearState::depth(1.0))
             // Render the triangle with the color material which uses the per vertex colors defined at construction
-            .render_partially(frame_input.scissor_box, &self.camera, &[&self.model], &[&self.light0, &self.light1]);
+            .render_partially(frame_input.scissor_box, &self.camera, self.model.into_iter(), &[&self.light0, &self.light1]);
 
         frame_input.screen.into_framebuffer() // Take back the screen fbo, we will continue to use it.
     }

@@ -41,7 +41,7 @@ pub fn vec2(x: f64, y: f64) -> Vector2<f64> {
     Vector2::new(x,y)
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Line {
     pub begin: Vector2<f64>,
     pub end: Vector2<f64>,
@@ -54,7 +54,7 @@ impl ToPoints for Line {
 }
 
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct EllipseArc {
     pub start_angle: f64,
     pub stop_angle: f64,

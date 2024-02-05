@@ -13,7 +13,7 @@ pub trait ConfigurableGeometry: geometry::ToPoints {
     fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext);
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConfigurableLine {
     line: geometry::Line,
     expressions: [String; 4],
@@ -65,7 +65,7 @@ impl ConfigurableGeometry for ConfigurableLine {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConfigurableEllipse {
     ellipse: geometry::EllipseArc,
     start_angle: String,

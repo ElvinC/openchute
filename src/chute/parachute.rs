@@ -1,7 +1,6 @@
 #![allow(unused)]
 
-
-
+use std::hash::{Hash, Hasher};
 extern crate nalgebra as na;
 use std::default;
 use std::path::PathBuf;
@@ -33,7 +32,7 @@ use serde::{Serialize, Deserialize};
 use serde_json;
 
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum GeometryType {
     Line(configurable_shapes::ConfigurableLine),
     EllipseArc(configurable_shapes::ConfigurableEllipse),
@@ -58,7 +57,7 @@ impl GeometryType {
 }
 
 // Represents a band. Can contain multiple geometries representing the cross section, but is symmetrical and has a fixed number of gores
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PolygonalChuteSection {
     objects: Vec<GeometryType>,
 
@@ -91,7 +90,7 @@ impl Default for PolygonalChuteSection {
 }
 
 // Represents a chute section that can be bent into a perfectly circular disk/cone/cylinder. Only a straight line allowed
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct CircularChuteSection {
     line: geometry::Line,
     expressions: [String; 4]
@@ -107,7 +106,7 @@ impl Default for CircularChuteSection {
 }
 
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum ChuteSectionType {
     Polygonal(PolygonalChuteSection),
     Circular(CircularChuteSection)
@@ -167,7 +166,7 @@ impl core::fmt::Display for GoreModifier {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChuteSection {
     section_type: ChuteSectionType,
     gores: u16,
@@ -177,10 +176,67 @@ pub struct ChuteSection {
     colors: Vec<[f32; 3]>, // Colors. If less than number of gores, it continues repeating
     modifier_first: GoreModifier, // Modifier for first thing in list
     modifier_last: GoreModifier, // Modifier for last thing in list
+    //expansion_first: f64, // Expansion of the gore (not reflected in 3D)
+    //expansion_last: f64, // Expansion of the gore
     cuts: Vec<(f64, f64)>, // Cuts given in vertical ratio (0-1) and angle (in rad)
 }
 
 impl ChuteSection {
+
+    fn simple_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext, index_id: u16) {
+        ui.heading(match self.section_type {
+            ChuteSectionType::Circular(_) => "Circular band",
+            ChuteSectionType::Polygonal(_) => "Polygonal geometry",
+        });
+        
+        ui.label("Fabric:");
+        self.fabric.ui(ui, frame, use_imperial, index_id);
+        
+        // Seam allowance input
+        ui.label("Seam allowance (right, left)");
+        ui.horizontal(|ui| {
+            ui::length_slider(ui, &mut self.seam_allowance.0, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+            ui::length_slider(ui, &mut self.seam_allowance.2, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+        });
+        ui.label("Seam allowance (top, bottom)");
+        ui.horizontal(|ui| {
+            ui::length_slider(ui, &mut self.seam_allowance.1, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+            ui::length_slider(ui, &mut self.seam_allowance.3, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+        });
+
+        ui.checkbox(&mut self.corner_cutout, "Cut out seam allowance corners");
+
+        ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
+        ui::integer_edit_field(ui, &mut self.gores);
+
+        ui.label("Shape modifier first");
+        GoreModifier::selector(ui, frame, &mut self.modifier_first, index_id * 2);
+
+        ui.label("Shape modifier last");
+        GoreModifier::selector(ui, frame, &mut self.modifier_last, index_id*2 + 1);
+
+
+        ui.horizontal(|ui| {
+            ui.label("Color:");
+            if ui.button("➕").clicked() {
+                // Alternate between international orange and black
+                if self.colors.len() % 2 == 0 {
+                    self.colors.push([1.0, 0.31, 0.0]);
+                } else {
+                    self.colors.push([0.0, 0.0, 0.0]);
+                }
+            };
+
+            if ui.add_enabled(self.colors.len() > 0, egui::Button::new("➖")).clicked() {
+                self.colors.pop().unwrap_or_default();
+            }
+
+            for color in self.colors.iter_mut() {
+                ui.color_edit_button_rgb(color);
+            }
+        });
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, use_imperial: bool, evaluator_context: &evalexpr::HashMapContext, index_id: u16) {
         ui.heading(match self.section_type {
             ChuteSectionType::Circular(_) => "Circular band",
@@ -771,9 +827,6 @@ pub struct ChuteDesigner {
     use_global_seam_allowance: bool,
     global_seam_allowance: f64,
 
-    // just for testing
-    test_color: [f32; 3],
-
     input_values: Vec<InputValue>, // Each needs a name, value, range (in m or deg).
     parameter_values: Vec<ParameterValue>, // always in SI units
 
@@ -784,6 +837,7 @@ pub struct ChuteDesigner {
     evaluator_context: evalexpr::HashMapContext, // evaluator that handles variables etc. Note: stored value always in SI base unit
 }
 
+
 impl PartialEq for ChuteDesigner {
     fn eq(&self, other: &Self) -> bool {
         if self.name.ne(&other.name) { false }
@@ -792,9 +846,9 @@ impl PartialEq for ChuteDesigner {
         else if self.fabric.ne(&other.fabric) { false }
         else if self.instructions.ne(&other.instructions) { false }
         else if self.use_global_seam_allowance.ne(&other.use_global_seam_allowance) { false }
-        else if self.test_color.ne(&other.test_color) { false }
         else if self.input_values.ne(&other.input_values) { false }
         else if self.parameter_values.ne(&other.parameter_values) { false }
+        else if self.chute_sections.ne(&other.chute_sections) { false }
         else { true }
     }
 
@@ -876,6 +930,18 @@ impl ChuteDesigner {
 
             ui.separator();
         }
+
+        for (idx, chute_section) in self.chute_sections.iter_mut().enumerate() {
+            ui.separator();
+            let res = egui::Frame::none().stroke(egui::Stroke::new(1.0, egui::Color32::GRAY)).inner_margin(10.0).outer_margin(5.0).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        chute_section.simple_ui(ui, frame, use_imperial, &self.evaluator_context, idx as u16);
+                    });
+                });
+            }).response;
+        }
+
     }
 
     pub fn instructions_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -1483,7 +1549,7 @@ impl ChuteDesigner {
 
         for pt in chute_coords.iter_mut() {
             (*pt).y -= offset_y;
-            *pt *= scaling;
+            //*pt *= scaling;
         }
 
         if chute_coords.is_empty() {
@@ -1718,7 +1784,6 @@ impl Default for ChuteDesigner {
             fabric: FabricSelector::new(),
             use_global_seam_allowance: true,
             global_seam_allowance: 0.01,
-            test_color: [0.0, 0.0, 0.0],
             input_values: vec![input1, input2, input3, input4, input5],
             parameter_values: vec![param1, param2, param3],
             evaluator_context: context,
@@ -1915,6 +1980,10 @@ impl PatternPiece {
 
         // Remove empty segments again
         segments.retain(|seg| !seg.points.is_empty());
+
+        if segments.is_empty() {
+            return;
+        }
 
         let mut allowance_prev = segments.last().unwrap().seam_allowance;
         let mut allowance_next = segments.first().unwrap().seam_allowance;

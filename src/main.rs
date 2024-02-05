@@ -92,6 +92,7 @@ struct ChuteUI {
     state: State,
 
     undoer: egui::util::undoer::Undoer<parachute::ChuteDesigner>,
+    update_mesh: bool,
 
     designer: parachute::ChuteDesigner,
     renderer_3d: ui::Widget3D,
@@ -232,8 +233,14 @@ impl ChuteUI {
     
             self.designer.options_ui(ui, frame, self.state.use_imperial);
     
-            // TODO: Make it only update when underlying data changes
-            self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));
+            // Only update when underlying data changes
+            if self.update_mesh {
+                self.update_mesh = false;
+                self.renderer_3d.handle_triangle(ui, Some(self.designer.get_3d_data()));
+            } else {
+                self.renderer_3d.handle_triangle(ui, None);
+            }
+            
 
             self.designer.instructions_ui(ui, frame);
 
@@ -259,6 +266,7 @@ impl ChuteUI {
     fn new_project(&mut self) {
         // Start from scratch
         self.initialised = true;
+        self.update_mesh = true;
         self.state.project_file = None;
         self.designer = parachute::ChuteDesigner::default();
     }
@@ -271,6 +279,7 @@ impl ChuteUI {
             self.state.project_file = Some(path.clone());
             self.designer = parachute::ChuteDesigner::from_json(&std::fs::read_to_string(path).unwrap());
             self.initialised = true;
+            self.update_mesh = true;
         }
     }
 
@@ -283,6 +292,7 @@ impl ChuteUI {
         }
         
         self.initialised = true;
+        self.update_mesh = true;
     }
 
     fn open_project_file(&mut self) {
@@ -350,7 +360,7 @@ impl eframe::App for ChuteUI {
                             self.open_project_file();
                         };
                         if ui.button("New parachute…").clicked() {
-                            self.initialised = true;
+                            self.new_project();
                         };
                     });
                 } else {
@@ -384,6 +394,8 @@ impl eframe::App for ChuteUI {
         
         ctx.input_mut(|i| {
             // Handle undo stuff
+            self.update_mesh = self.update_mesh || self.undoer.is_in_flux();
+
             self.undoer.feed_state(i.time, &self.designer);
             if i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::MAC_CMD, egui::Key::Z)) ||
                i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z)) {
