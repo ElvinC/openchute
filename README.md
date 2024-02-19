@@ -3,6 +3,8 @@
 # openchute
 Work in progress parachute design program for generating circularly symmetric sewing patterns. Comes with examples for disk-gap-band, toroidal, hemispherical, and cross parachutes.
 
+![screenshot](assets/example_screenshot.jpg)
+
 # Installation and instructions
 If you're on Windows, download the latest version from the releases. On another system, clone the repository and use `cargo run` (TODO: add compiled versions for other systems).
 
