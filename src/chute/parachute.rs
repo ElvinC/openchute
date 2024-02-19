@@ -114,13 +114,15 @@ pub enum ChuteSectionType {
 
 
 // For stuff like assymetrical gore top/bottom or cutouts
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum GoreModifier {
+    #[default]
     Nothing, // Don't modify
     SlantSegmentLeft, // Slant whole segment
     SlantSegmentRight, // Slant whole segment
     TriangleSegmentIn, // Triangle pointing inwards
     TriangleSegmentOut, // Triangle pointing outwards
+    Catenary, // Arch formed by free-hanging rope https://en.wikipedia.org/wiki/Catenary
     SlantAngle(f64) // Slant by defined angle (in rad)
 }
 
@@ -137,7 +139,8 @@ impl GoreModifier {
                     ui.selectable_value(modifier, GoreModifier::SlantSegmentRight, "Slant segment right");
                     ui.selectable_value(modifier, GoreModifier::TriangleSegmentIn, "Triangle segment inwards");
                     ui.selectable_value(modifier, GoreModifier::TriangleSegmentOut, "Triangle segment outwards");
-                    ui.selectable_value(modifier, GoreModifier::SlantAngle(std::f64::consts::FRAC_PI_4), "Slant by angle");
+                    ui.selectable_value(modifier, GoreModifier::Catenary, "Catenary curve (n/a)");
+                    ui.selectable_value(modifier, GoreModifier::SlantAngle(std::f64::consts::FRAC_PI_4), "Slant by angle (n/a)");
                 }
             );
 
@@ -161,7 +164,8 @@ impl core::fmt::Display for GoreModifier {
             GoreModifier::SlantSegmentRight => write!(f, "Slant segment right"),
             GoreModifier::SlantAngle(_) => write!(f, "Slant with angle"),
             GoreModifier::TriangleSegmentIn => write!(f, "Triangle segment inwards"),
-            GoreModifier::TriangleSegmentOut => write!(f, "Triangle segment outwards")
+            GoreModifier::TriangleSegmentOut => write!(f, "Triangle segment outwards"),
+            GoreModifier::Catenary => write!(f, "Catenary curve")
         }
     }
 }
@@ -174,10 +178,13 @@ pub struct ChuteSection {
     seam_allowance: (f64, f64, f64, f64), // Right, top, left, bottom
     corner_cutout: bool,
     colors: Vec<[f32; 3]>, // Colors. If less than number of gores, it continues repeating
+    #[serde(default)]
     modifier_first: GoreModifier, // Modifier for first thing in list
+    #[serde(default)]
     modifier_last: GoreModifier, // Modifier for last thing in list
     //expansion_first: f64, // Expansion of the gore (not reflected in 3D)
     //expansion_last: f64, // Expansion of the gore
+    #[serde(default)]
     cuts: Vec<(f64, f64)>, // Cuts given in vertical ratio (0-1) and angle (in rad)
 }
 
@@ -869,8 +876,8 @@ unit! {
 impl ChuteDesigner {
 
     pub fn from_json(s: &str) -> Self {
-        serde_json::from_str(s).unwrap_or_else(|_| {
-            println!("Error loading file");
+        serde_json::from_str(s).unwrap_or_else(|e| {
+            println!("Error loading file {:?}", e);
             Self::default()
         })
     }
@@ -1611,12 +1618,12 @@ impl ChuteDesigner {
             let width = max.x - min.x;
 
             for point in &gore_points.points {
-                let vertex = Vertex::new(dxf::Point::new(point.x + x_offset - min.x, point.y - min.y, 0.0));
+                let vertex = Vertex::new(dxf::Point::new((point.x + x_offset - min.x) * 1000.0, (point.y - min.y) * 1000.0, 0.0));
                 polyline.add_vertex(&mut drawing, vertex);
             }
 
             for point in &no_seam.points {
-                let vertex = Vertex::new(dxf::Point::new(point.x + x_offset - min.x, point.y - min.y, 0.0));
+                let vertex = Vertex::new(dxf::Point::new((point.x + x_offset - min.x) * 1000.0, (point.y - min.y) * 1000.0, 0.0));
                 polyline_no_seam.add_vertex(&mut drawing, vertex);
             }
 
@@ -1626,17 +1633,23 @@ impl ChuteDesigner {
             label.location = dxf::Point::new(x_offset, -0.2, 0.0);
             //label.second_alignment_point = dxf::Point::new(x_offset + width, -0.2, 0.0);
             label.text_height = 0.04;
-
+        
             x_offset += width + 0.1; // 10 cm between
             
             // Add the polyline to the drawing
             drawing.add_entity(Entity::new(EntityType::Polyline(polyline)));
-            drawing.add_entity(Entity::new(EntityType::Polyline(polyline_no_seam)));
+            //drawing.add_entity(Entity::new(EntityType::Polyline(polyline_no_seam)));
 
-            drawing.add_entity(Entity::new(EntityType::Text(label)));
+            //drawing.add_entity(Entity::new(EntityType::Text(label)));
         }
 
-        drawing.header.default_drawing_units = dxf::enums::Units::Meters;
+        drawing.header.default_drawing_units = dxf::enums::Units::Millimeters;
+
+        let mut backup_path = path.clone();
+        backup_path.set_extension("dxf.chute");
+
+        // Backup the parachute file
+        std::fs::write(backup_path, self.to_json().unwrap());
 
         // Save the drawing to a DXF file
         drawing.save_file(path).unwrap();
@@ -1723,11 +1736,10 @@ impl ChuteDesigner {
         let mut backup_path = path.clone();
         backup_path.set_extension("pdf.chute");
 
-        doc.save(&mut std::io::BufWriter::new(std::fs::File::create(path).unwrap())).unwrap();
-
         // Backup the parachute file
         std::fs::write(backup_path, self.to_json().unwrap());
 
+        doc.save(&mut std::io::BufWriter::new(std::fs::File::create(path).unwrap())).unwrap();
     }
 
     pub fn default_context() -> evalexpr::HashMapContext {

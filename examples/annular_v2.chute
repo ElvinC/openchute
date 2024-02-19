@@ -1,0 +1,301 @@
+{
+  "name": "Annular v2",
+  "gores": 8,
+  "diameter": 1.0,
+  "fabric": {
+    "modified": false,
+    "selected_fabric": {
+      "area_density_gsm": 38.0,
+      "name": "Ripstop nylon"
+    },
+    "fabric_options": [
+      {
+        "area_density_gsm": 38.0,
+        "name": "Ripstop nylon"
+      },
+      {
+        "area_density_gsm": 48.0,
+        "name": "Ripstop nylon"
+      },
+      {
+        "area_density_gsm": 67.0,
+        "name": "Ripstop nylon"
+      }
+    ]
+  },
+  "instructions": [
+    "suspension lines: 1.1*diameter.  (or 2.2 * diameter when doubled up). + about 5-10 cm for sewing",
+    "pull-down lines: Can be found using trig and coords from the diagram",
+    "Step"
+  ],
+  "use_global_seam_allowance": true,
+  "global_seam_allowance": 0.01,
+  "input_values": [
+    {
+      "id": "diameter",
+      "description": "Parachute Diameter. Only one you \"need\" to change",
+      "value": 1.0,
+      "unit": "MeterFoot",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 1.0
+    },
+    {
+      "id": "height_ratio",
+      "description": "height / diameter of parachute",
+      "value": 0.47,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.47
+    },
+    {
+      "id": "vent_ratio",
+      "description": "vent_diameter / diameter of parachute",
+      "value": 0.2,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.2
+    },
+    {
+      "id": "apex_ratio_horizontal",
+      "description": "Controls the highest point on the chute",
+      "value": 0.5,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.5
+    },
+    {
+      "id": "apex_ratio_vertical",
+      "description": "How far down the apex is pulled",
+      "value": 0.4,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.4
+    },
+    {
+      "id": "apex_angle",
+      "description": "Angle formed at the vent.",
+      "value": 0.5,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.5
+    },
+    {
+      "id": "skirt_size",
+      "description": "Size of the skirt extension. Set to zero to disable",
+      "value": 0.25,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.25
+    },
+    {
+      "id": "skirt_angle",
+      "description": "Angle at the hem (fraction of 90 deg). 0.3 makes edge tangential to suspension lines when lines=1*diameter",
+      "value": 0.25,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 1.0
+      },
+      "default_value": 0.25
+    }
+  ],
+  "parameter_values": [
+    {
+      "id": "no_vent",
+      "expression": "1-vent_ratio",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "circle_center",
+      "expression": "vent_ratio+no_vent*apex_ratio_horizontal",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "pulldown_width",
+      "expression": "no_vent*apex_ratio_horizontal",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "outer_radius",
+      "expression": "no_vent*(1-apex_ratio_horizontal)",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "apex_angle_rad",
+      "expression": "0.5*pi*apex_angle",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "inner_radius",
+      "expression": "pulldown_width/math::sin(apex_angle_rad)",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "apex_height_coef",
+      "expression": "1/(1-math::cos(apex_angle_rad))",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "radius",
+      "expression": "diameter/2",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "skirt_radius",
+      "expression": "skirt_size * radius",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "skirt_center_x",
+      "expression": "(1-skirt_size)*radius",
+      "display_unit": "MeterFoot"
+    }
+  ],
+  "chute_sections": [
+    {
+      "section_type": {
+        "Polygonal": {
+          "objects": [
+            {
+              "EllipseArc": {
+                "ellipse": {
+                  "start_angle": -0.39269908169872414,
+                  "stop_angle": 0.0,
+                  "rotation": 0.0,
+                  "radius_x": 0.125,
+                  "radius_y": 0.125,
+                  "center": [
+                    0.375,
+                    0.0
+                  ]
+                },
+                "start_angle": "-skirt_angle*pi/2",
+                "stop_angle": "0",
+                "rotation": "0.0",
+                "radius_x": "skirt_radius",
+                "radius_y": "skirt_radius",
+                "center": [
+                  "skirt_center_x",
+                  "0.0"
+                ]
+              }
+            },
+            {
+              "EllipseArc": {
+                "ellipse": {
+                  "start_angle": 0.0,
+                  "stop_angle": 1.5707963267948966,
+                  "rotation": 0.0,
+                  "radius_x": 0.2,
+                  "radius_y": 0.235,
+                  "center": [
+                    0.30000000000000004,
+                    0.0
+                  ]
+                },
+                "start_angle": "0.0",
+                "stop_angle": "0.5 * pi",
+                "rotation": "0.0",
+                "radius_x": "outer_radius*radius",
+                "radius_y": "height_ratio*radius",
+                "center": [
+                  "circle_center*radius",
+                  "0.0"
+                ]
+              }
+            },
+            {
+              "EllipseArc": {
+                "ellipse": {
+                  "start_angle": 1.5707963267948966,
+                  "stop_angle": 2.356194490192345,
+                  "rotation": 0.0,
+                  "radius_x": 0.282842712474619,
+                  "radius_y": 0.320936074863071,
+                  "center": [
+                    0.30000000000000004,
+                    -0.08593607486307105
+                  ]
+                },
+                "start_angle": "0.5 * pi",
+                "stop_angle": "0.5 * pi+apex_angle_rad",
+                "rotation": "0.0",
+                "radius_x": "inner_radius*radius",
+                "radius_y": "(apex_ratio_vertical*apex_height_coef)*height_ratio*radius",
+                "center": [
+                  "circle_center*radius",
+                  "(1-apex_ratio_vertical*apex_height_coef)*height_ratio*radius"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "gores": 8,
+      "fabric": {
+        "modified": false,
+        "selected_fabric": {
+          "area_density_gsm": 38.0,
+          "name": "Ripstop nylon"
+        },
+        "fabric_options": [
+          {
+            "area_density_gsm": 38.0,
+            "name": "Ripstop nylon"
+          },
+          {
+            "area_density_gsm": 48.0,
+            "name": "Ripstop nylon"
+          },
+          {
+            "area_density_gsm": 67.0,
+            "name": "Ripstop nylon"
+          }
+        ]
+      },
+      "seam_allowance": [
+        0.01,
+        0.01,
+        0.01,
+        0.01
+      ],
+      "corner_cutout": false,
+      "colors": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.9814971,
+          0.35238093,
+          1.0
+        ]
+      ],
+      "modifier_first": "Nothing",
+      "modifier_last": "Nothing",
+      "cuts": []
+    }
+  ]
+}

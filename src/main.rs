@@ -353,7 +353,7 @@ impl eframe::App for ChuteUI {
             .show(ui, |ui| {
                 if !self.initialised {
                     // Show buttons for loading a file or creating a new project
-                    ui.heading("Welcome to OpenChute (incomplete alpha version) :D");
+                    ui.heading("Welcome to OpenChute (alpha version) :D");
                     ui.label("You can also drag a design file onto here");
                     ui.horizontal(|ui| {
                         if ui.button("Open parachute…").clicked() {

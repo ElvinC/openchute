@@ -1,5 +1,21 @@
+![openchute logo](assets/parachute.png)
+
 # openchute
-WIP parachute designer
+Work in progress parachute design program for generating circularly symmetric sewing patterns. Comes with examples for disk-gap-band, toroidal, hemispherical, and cross parachutes.
+
+# Installation and instructions
+If you're on Windows, download the latest version from the releases. On another system, clone the repository and use `cargo run` (TODO: add compiled versions for other systems).
+
+1. Unzip the folder. It contains some example parachutes
+2. Execute the .exe file. Select "Open parachute" and select an example file
+3. Tweak the shape parameters. The diameter is the main thing to modify. See the list of instructions for design-specific information.
+4. Change the number of gores and preview color if desired.
+5. Modify the seam allowances depending on seam type. Top/bottom can be used for different seam allowances at vent and hem. "Cut out seam allowance corners" removes fabric at corners.
+6. The displayed "Chute canopy area" can be used for drag estimation. The "Total area" can be used for mass estimation.
+7. `file->save design` and save the design somewhere
+8. For printing out the pattern, use `expert PDF`. Print out the pattern at 100% scale. Adobe acrobat reader or similar can print tile multiple sheets (poster mode). A project backup is saved with the pdf.
+9. For laser cutting, use `expert DXF`, note that the units are mm by default.
+10. Sew the parachute :). Some useful resources are towards bottom of this page.
 
 # Code todos
 * Add labels to the parachute section
@@ -11,15 +27,6 @@ WIP parachute designer
 * Fix flat sheet parachute circle with vent hole (allow cutouts)
 * Fix all the unwrap operations
 
-* Add up/down arrows for parachute sections - Done
-* Tweak shape generation to give exact outer diameter - DONE
-* Change displayed filename after saves - DONE
-* 3d visualisation automatic scaling - DONE
-* Finalise icon - DONE
-* Fix three segments joining in one point. Currently it resets the point and misaligns it :/. DONE
-* Add default option for cm - inches - DONE
-* Avoid recomputing 3D model unless geometry has changed - DONE
-
 
 # TODO:
 
@@ -27,7 +34,7 @@ Basic:
 
 * Calculate fabric surface area and weight
 
-* Simple UI
+* Simple UI - DONE
 * Area, mass, drag estimation
 * Custom seam allowances - DONE
 * Output to DXF - DONE
@@ -82,6 +89,7 @@ The most common canopy material is ripstop nylon, with low-weight and calendared
 * ripstop.pl (EU): https://www.ripstop.pl/
 * BlackCatRocketry (UK): https://www.blackcatrocketry.co.uk/products/1-1oz-silicon-coated-ripstop-nylon
 * Kite fabric sellers on Aliexpress, e.g. [9KM-KITES](https://aliexpress.com/store/5584306) (also available through Amazon)
+* Ebay
 * Local fabric sellers (note that it might be a lot thicker than what you want).
 
 # Canopy lines
@@ -89,7 +97,7 @@ Canopy lines are commonly made of nylon, kevlar, or UHMWPE (trade names spectra,
 
 * Emma kites (US): https://www.emmakites.com/
 * [9KM-KITES](https://aliexpress.com/store/5584306) or [9KM-DWLIFE](https://aliexpress.com/store/4670014) (Aliexpress) 
-* Shops for skidiving stuff.
+* Shops for skydiving stuff.
 
 # Misc. parachute stuff
 This may include swivels, quicklinks, harnesses etc.

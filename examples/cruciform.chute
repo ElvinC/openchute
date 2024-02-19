@@ -1,0 +1,139 @@
+{
+  "name": "Cruciform",
+  "gores": 8,
+  "diameter": 1.0,
+  "fabric": {
+    "modified": false,
+    "selected_fabric": {
+      "area_density_gsm": 38.0,
+      "name": "Ripstop nylon"
+    },
+    "fabric_options": [
+      {
+        "area_density_gsm": 38.0,
+        "name": "Ripstop nylon"
+      },
+      {
+        "area_density_gsm": 48.0,
+        "name": "Ripstop nylon"
+      },
+      {
+        "area_density_gsm": 67.0,
+        "name": "Ripstop nylon"
+      }
+    ]
+  },
+  "instructions": [
+    "Based on bodging the right circular geometry to match a cross parachute. Ignore the 3D and cross-section views.",
+    "Leave \"Number of gores\" at 2",
+    "Note: The computed \"Chute canopy area\" also includes the middle cross over section\"",
+    "Cut out two, hem edges, cross over, and sew together",
+    "Make sure to change seam allowances accordingly"
+  ],
+  "use_global_seam_allowance": true,
+  "global_seam_allowance": 0.01,
+  "input_values": [
+    {
+      "id": "size",
+      "description": "Size measured from one flat edge of cruciform to other",
+      "value": 1.0,
+      "unit": "MeterFoot",
+      "range": {
+        "start": 0.0,
+        "end": 10.0
+      },
+      "default_value": 1.0
+    },
+    {
+      "id": "edge_aspect_ratio",
+      "description": "Aspect ratio of the edges of the cross. 1 gives square edge pieces, <1 gives shorter edge pieces",
+      "value": 1.0,
+      "unit": "UnitLess",
+      "range": {
+        "start": 0.0,
+        "end": 2.0
+      },
+      "default_value": 1.0
+    }
+  ],
+  "parameter_values": [
+    {
+      "id": "fake_height",
+      "expression": "size",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "width",
+      "expression": "size/(2 * edge_aspect_ratio + 1)",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "fake_diameter",
+      "expression": "2 * width / pi",
+      "display_unit": "MeterFoot"
+    }
+  ],
+  "chute_sections": [
+    {
+      "section_type": {
+        "Circular": {
+          "line": {
+            "begin": [
+              0.10610329539459688,
+              0.0
+            ],
+            "end": [
+              0.10610329539459688,
+              1.0
+            ]
+          },
+          "expressions": [
+            "fake_diameter/2",
+            "0",
+            "fake_diameter/2",
+            "fake_height"
+          ]
+        }
+      },
+      "gores": 2,
+      "fabric": {
+        "modified": false,
+        "selected_fabric": {
+          "area_density_gsm": 38.0,
+          "name": "Ripstop nylon"
+        },
+        "fabric_options": [
+          {
+            "area_density_gsm": 38.0,
+            "name": "Ripstop nylon"
+          },
+          {
+            "area_density_gsm": 48.0,
+            "name": "Ripstop nylon"
+          },
+          {
+            "area_density_gsm": 67.0,
+            "name": "Ripstop nylon"
+          }
+        ]
+      },
+      "seam_allowance": [
+        0.01,
+        0.01,
+        0.01,
+        0.01
+      ],
+      "corner_cutout": false,
+      "colors": [
+        [
+          1.0,
+          0.3099997,
+          0.0
+        ]
+      ],
+      "modifier_first": "Nothing",
+      "modifier_last": "Nothing",
+      "cuts": []
+    }
+  ]
+}
