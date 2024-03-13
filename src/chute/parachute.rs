@@ -36,13 +36,15 @@ use serde_json;
 pub enum GeometryType {
     Line(configurable_shapes::ConfigurableLine),
     EllipseArc(configurable_shapes::ConfigurableEllipse),
+    PointList(configurable_shapes::ConfigurablePointList),
 }
 
 impl geometry::ToPoints for GeometryType {
     fn to_points(&self, resolution: u32) -> geometry::Points {
         match self {
             Self::Line(config) => config.to_points(resolution),
-            Self::EllipseArc(config) => config.to_points(resolution)
+            Self::EllipseArc(config) => config.to_points(resolution),
+            Self::PointList(config) => config.to_points(resolution),
         }
     }
 }
@@ -51,7 +53,8 @@ impl GeometryType {
     fn update_from_context(&mut self, evaluator_context: &evalexpr::HashMapContext) {
         match self {
             Self::Line(config) => config.update_from_context(evaluator_context),
-            Self::EllipseArc(config) => config.update_from_context(evaluator_context)
+            Self::EllipseArc(config) => config.update_from_context(evaluator_context),
+            Self::PointList(config) => config.update_from_context(evaluator_context),
         }
     }
 }
@@ -73,6 +76,12 @@ impl PolygonalChuteSection {
     fn add_ellipse(&mut self) {
         self.objects.push(GeometryType::EllipseArc(
             configurable_shapes::ConfigurableEllipse::new(),
+        ));
+    }
+
+    fn add_pointlist(&mut self) {
+        self.objects.push(GeometryType::PointList(
+            configurable_shapes::ConfigurablePointList::new(),
         ));
     }
 
@@ -333,6 +342,10 @@ impl ChuteSection {
                     if ui.button("Add ellipse arc").clicked() {
                         sec.add_ellipse();
                     }
+
+                    if ui.button("Add point list").clicked() {
+                        sec.add_pointlist();
+                    }
                 });
 
                 ui.separator();
@@ -350,6 +363,7 @@ impl ChuteSection {
                         match object {
                             GeometryType::Line(config) => config.ui(ui, frame, use_imperial, evaluator_context),
                             GeometryType::EllipseArc(config) => config.ui(ui, frame, use_imperial, evaluator_context),
+                            GeometryType::PointList(config) => config.ui(ui, frame, use_imperial, evaluator_context),
                         }
                     });
                 }

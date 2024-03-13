@@ -157,7 +157,7 @@ impl ToPoints for BezierSpline {
 
 
 // A collection of points
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Points {
     pub points: Vec<Vector2<f64>>,
 }
