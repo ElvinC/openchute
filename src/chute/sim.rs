@@ -1,4 +1,16 @@
 #![allow(unused)]
+use std::fs::{self, File};
+use std::io::prelude::*;
+use std::io::LineWriter;
+
+#[derive(Clone)]
+struct AtmosphericCondition {
+    pressure: f64,
+    density: f64,
+    temperature: f64,
+    sound_speed: f64,
+}
+
 
 const LAYERS: [(f64, f64); 8] = [(0.0, -0.0065), // ground
                                 (11000.0, -0.0065), // Troposphere
@@ -9,7 +21,7 @@ const LAYERS: [(f64, f64); 8] = [(0.0, -0.0065), // ground
                                 (71000.0, -0.0028), // Mesosphere
                                 (86000.0, -0.0020)];  // Mesosphere
 
-fn get_density(height: f64) -> f64 {
+fn get_atmosphere(height: f64) -> AtmosphericCondition {
 	let g0 = 9.80665; // m/s^2
     let t0 = 288.15;
     let p0 = 101325.0;
@@ -18,7 +30,12 @@ fn get_density(height: f64) -> f64 {
 	let mut p = p0; // Pa
 
     if height > LAYERS.last().unwrap().0 {
-        return 0.0;
+        return AtmosphericCondition {
+            density: 0.0,
+            pressure: 0.0,
+            temperature: 186.946,
+            sound_speed: (1.4 * r * 186.946f64).sqrt(),
+        }
     }
     let h = height;
 
@@ -44,7 +61,16 @@ fn get_density(height: f64) -> f64 {
         }
     }
 
-    p / (r * t)
+    // Speed of sound
+    let a = (1.4 * r * t).sqrt();
+    let density = p / (r * t);
+
+    AtmosphericCondition {
+        density: density,
+        pressure: p,
+        temperature: t,
+        sound_speed: a,
+    }
 }
 
 #[derive(Clone)]
@@ -54,6 +80,10 @@ struct SimData {
     velocity: f64,
     acceleration: f64,
     force: f64,
+    atmosphere: AtmosphericCondition,
+    dynamic_pressure: f64,
+    mach: f64,
+    stagnation_temp: f64,
 }
 
 struct Sim {
@@ -87,30 +117,40 @@ impl Sim {
             return self.sim_results.clone();
         }
         
-        let mut dt = 0.01; // initial timestep. Change to 1s when acceleration is lower
+        let mut dt = 0.1; // initial timestep. Change to 1s when acceleration is lower
         let mut altitude = self.initial_altitude;
-        let mut velocity = -self.initial_speed; // Positive upwards
+        let mut velocity = self.initial_speed; // Positive upwards
+        let mut acceleration_old = -9.80665;
+        let mut acceleration = -9.80665;
         let mut time = 0.0;
 
         for _ in 0..10000 {
-            let force = -0.5 * get_density(altitude) * velocity * velocity * self.area * self.cd * velocity.signum();
-            let acceleration = -9.80665 + force / self.mass;
-            // Basic forward euler, whatevs
-            velocity += acceleration * dt;
-            altitude += velocity * dt;
+            altitude += velocity * dt + 0.5 * acceleration * dt * dt;
+            
+            acceleration_old = acceleration;
+            let atmo = get_atmosphere(altitude);
+            let force = -0.5 * atmo.density * velocity * velocity * self.area * self.cd * velocity.signum();
+            acceleration = -9.80665 + force / self.mass;
+            // Velocity verlet
+            velocity += 0.5 * (acceleration + acceleration_old) * dt;
 
             if altitude < 0.0 {
                 break
             }
 
-            dt = if acceleration < 1.0 { 0.5 } else { 0.01 };
-
+            dt = if acceleration < 1.0 { 0.5 } else { 0.1 };
+            let mach = velocity / atmo.sound_speed;
+            let stagnation = (1.0 + (1.4 - 1.0) / 2.0 * mach.powi(2)) * atmo.temperature;
             self.sim_results.push(SimData {
                 acceleration: acceleration,
                 altitude: altitude,
-                force: force.abs(),
+                force: force,
                 time: time,
-                velocity: velocity.abs(),
+                velocity: velocity,
+                dynamic_pressure: 0.5 * atmo.density * velocity * velocity,
+                atmosphere: atmo,
+                mach: mach,
+                stagnation_temp: stagnation,
             });
 
             time += dt;
@@ -122,29 +162,41 @@ impl Sim {
 
     fn plot_altitude(&self) {
         for dat in self.sim_results.iter() {
-            print!("[{:.2},{:.2},{:.2}],", dat.time, dat.altitude, dat.velocity);
+            print!("[{:.2},{:.2},{:.2}, {:.1}],", dat.time, dat.altitude, dat.velocity, dat.dynamic_pressure);
         }
+    }
+
+    fn save_data(&self, filename: &str) {
+        let file = File::create(filename).unwrap();
+        let mut file = LineWriter::new(file);
+        file.write_all(b"time[s],altitude[m],velocity[m/s],dynamic_pressure[Pa],force[N],stagnationT[K]\n").unwrap();
+
+        for dat in self.sim_results.iter() {
+            write!(file, "{:.2},{:.2},{:.2},{:.1},{:.1},{:.1}\n", dat.time, dat.altitude, dat.velocity, dat.dynamic_pressure, dat.force, dat.stagnation_temp);
+        }
+
+        file.flush().unwrap();
     }
 }
 
 
 #[cfg(test)]
 mod tests {
-    use crate::chute::sim::get_density;
 
     use super::Sim;
 
-
+/*
     #[test]
     fn test_isa() {
         println!("DENSITY: {}", get_density(18000.0));
     }
-
+ */
     #[test]
     fn test_sim() {
-        let mut s = Sim::new(1.0, 1000.0, 50.0, 1.0, 0.7);
+        let mut s = Sim::new(12.7, 120000.0, 0.0, 0.07, 1.0);
         s.simulate();
-        s.plot_altitude();
+        s.save_data("data2.csv");
+        println!("Finished simulation");
     }
 
 }

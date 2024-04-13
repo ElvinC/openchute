@@ -195,6 +195,8 @@ pub struct ChuteSection {
     //expansion_last: f64, // Expansion of the gore
     #[serde(default)]
     cuts: Vec<(f64, f64)>, // Cuts given in vertical ratio (0-1) and angle (in rad)
+    #[serde(default)]
+    fullness: (f64, f64), // Leading/trailing edge fullness. Take leading edge of gore and expand by this amount
 }
 
 impl ChuteSection {
@@ -272,6 +274,11 @@ impl ChuteSection {
         ui.horizontal(|ui| {
             ui::length_slider(ui, &mut self.seam_allowance.1, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
             ui::length_slider(ui, &mut self.seam_allowance.3, use_imperial, 0.0..=0.1, &length::millimeter, &length::inch);
+        });
+        ui.label("Fullness expansion (Leading, Trailing)");
+        ui.horizontal(|ui| {
+            ui::length_slider(ui, &mut self.fullness.0, use_imperial, 0.0..=0.5, &unitless, &unitless);
+            ui::length_slider(ui, &mut self.fullness.1, use_imperial, 0.0..=0.5, &unitless, &unitless);
         });
 
         ui.checkbox(&mut self.corner_cutout, "Cut out seam allowance corners");
@@ -410,6 +417,7 @@ impl ChuteSection {
             modifier_first: GoreModifier::Nothing,
             modifier_last: GoreModifier::Nothing,
             cuts: vec![],
+            fullness: (0.0, 0.0)
         }
     }
 
@@ -424,6 +432,7 @@ impl ChuteSection {
             modifier_first: GoreModifier::Nothing,
             modifier_last: GoreModifier::Nothing,
             cuts: vec![],
+            fullness: (0.0, 0.0),
         }
     }
 
@@ -626,7 +635,7 @@ impl ChuteSection {
                     }
 
                     inner_points.reverse(); // Reverse inner to keep clockwise ordering
-
+                    // TODO: Add fullness factor
                     // Outer segment
                     piece.add_segment(Segment::from_vec(outer_points, allowance.3));
 
@@ -684,6 +693,17 @@ impl ChuteSection {
                     let gore_pt = vec2(polygon_side_length * this_pt.x * 0.5, y_coord);
                     right_points.points.push(gore_pt);
                     y_coord += diff;
+                }
+
+                // Fullness expansion calculation. Start by getting y coords of first and last point.
+                let y_first = right_points.points.first().unwrap().y;
+                let y_last = right_points.points.last().unwrap().y;
+                let fullness_slope = (self.fullness.1 - self.fullness.0) / (y_last - y_first);
+                let y_to_expansion = |y| self.fullness.0 + 1.0 + fullness_slope * (y-y_first);
+
+                // Linearly interpolate fullness between the two
+                for pt in right_points.points.iter_mut() {
+                    pt.x *= y_to_expansion(pt.y);
                 }
 
                 let mut left_points = right_points.mirror_x();
