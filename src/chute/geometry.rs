@@ -176,6 +176,10 @@ impl Points {
     }
     
     pub fn bounds(&self) -> (Vector2<f64>, Vector2<f64>) {
+        if self.points.len() == 0 {
+            return (Vector2::new(0.0,0.0), Vector2::new(0.0,0.0))
+        }
+
         let mut min = self.points[0];
         let mut max = self.points[0];
 

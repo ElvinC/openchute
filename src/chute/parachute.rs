@@ -227,11 +227,11 @@ impl ChuteSection {
         ui.label("Number of gores:").on_hover_text("Number of parachute gores. Typically between 6 and 24");
         ui::integer_edit_field(ui, &mut self.gores);
 
-        ui.label("Shape modifier first");
-        GoreModifier::selector(ui, frame, &mut self.modifier_first, index_id * 2);
+        //ui.label("Shape modifier first");
+        //GoreModifier::selector(ui, frame, &mut self.modifier_first, index_id * 2);
 
-        ui.label("Shape modifier last");
-        GoreModifier::selector(ui, frame, &mut self.modifier_last, index_id*2 + 1);
+        //ui.label("Shape modifier last");
+        //GoreModifier::selector(ui, frame, &mut self.modifier_last, index_id*2 + 1);
 
 
         ui.horizontal(|ui| {

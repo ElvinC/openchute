@@ -169,10 +169,10 @@ impl Sim {
     fn save_data(&self, filename: &str) {
         let file = File::create(filename).unwrap();
         let mut file = LineWriter::new(file);
-        file.write_all(b"time[s],altitude[m],velocity[m/s],dynamic_pressure[Pa],force[N],stagnationT[K]\n").unwrap();
+        file.write_all(b"time[s],altitude[m],velocity[m/s],dynamic_pressure[Pa],force[N],stagnationT[K],Mach\n").unwrap();
 
         for dat in self.sim_results.iter() {
-            write!(file, "{:.2},{:.2},{:.2},{:.1},{:.1},{:.1}\n", dat.time, dat.altitude, dat.velocity, dat.dynamic_pressure, dat.force, dat.stagnation_temp);
+            write!(file, "{:.2},{:.2},{:.2},{:.1},{:.1},{:.1},{:.3}\n", dat.time, dat.altitude, dat.velocity, dat.dynamic_pressure, dat.force, dat.stagnation_temp, dat.mach);
         }
 
         file.flush().unwrap();
@@ -193,9 +193,9 @@ mod tests {
  */
     #[test]
     fn test_sim() {
-        let mut s = Sim::new(12.7, 120000.0, 0.0, 0.07, 1.0);
+        let mut s = Sim::new(56.0, 150000.0, 0.0, 2.24, 1.0);
         s.simulate();
-        s.save_data("data2.csv");
+        s.save_data("test.csv");
         println!("Finished simulation");
     }
 

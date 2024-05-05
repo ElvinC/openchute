@@ -232,7 +232,12 @@ impl ChuteUI {
             */
     
             self.designer.options_ui(ui, frame, self.state.use_imperial);
-    
+            
+
+            self.designer.instructions_ui(ui, frame);
+
+            ui = &mut columns[1];
+            
             // Only update when underlying data changes
             if self.update_mesh {
                 self.update_mesh = false;
@@ -240,12 +245,7 @@ impl ChuteUI {
             } else {
                 self.renderer_3d.handle_triangle(ui, None);
             }
-            
 
-            self.designer.instructions_ui(ui, frame);
-
-            ui = &mut columns[1];
-            
             self.designer.draw_cross_section(ui, frame, None);
             self.designer.draw_gores(ui, frame, None);
 

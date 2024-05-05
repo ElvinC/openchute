@@ -28,14 +28,15 @@
     "Leave \"Number of gores\" at 2",
     "Note: The computed \"Chute canopy area\" also includes the middle cross over section\"",
     "Cut out two, hem edges, cross over, and sew together",
-    "Make sure to change seam allowances accordingly"
+    "Make sure to change seam allowances accordingly",
+    "See computed surface area in the \"geometry\" tab (excluding overlapping section)"
   ],
   "use_global_seam_allowance": true,
   "global_seam_allowance": 0.01,
   "input_values": [
     {
       "id": "size",
-      "description": "Size measured from one flat edge of cruciform to other",
+      "description": "length measured from one short side to other",
       "value": 1.0,
       "unit": "MeterFoot",
       "range": {
@@ -45,31 +46,36 @@
       "default_value": 1.0
     },
     {
-      "id": "edge_aspect_ratio",
-      "description": "Aspect ratio of the edges of the cross. 1 gives square edge pieces, <1 gives shorter edge pieces",
-      "value": 1.0,
+      "id": "aspect_ratio",
+      "description": "Aspect ratio of the edges of the cross. 3 gives a \"standard\" cross. 4 is recommended for better stability",
+      "value": 3.0,
       "unit": "UnitLess",
       "range": {
-        "start": 0.0,
-        "end": 2.0
+        "start": 1.0,
+        "end": 5.0
       },
-      "default_value": 1.0
+      "default_value": 3.0
     }
   ],
   "parameter_values": [
     {
-      "id": "fake_height",
-      "expression": "size",
+      "id": "height",
+      "expression": "size/aspect_ratio",
       "display_unit": "MeterFoot"
     },
     {
       "id": "width",
-      "expression": "size/(2 * edge_aspect_ratio + 1)",
+      "expression": "size",
       "display_unit": "MeterFoot"
     },
     {
       "id": "fake_diameter",
       "expression": "2 * width / pi",
+      "display_unit": "MeterFoot"
+    },
+    {
+      "id": "surface_area",
+      "expression": "width*height*2-height^2",
       "display_unit": "MeterFoot"
     }
   ],
@@ -79,19 +85,19 @@
         "Circular": {
           "line": {
             "begin": [
-              0.10610329539459688,
+              0.3183098861837907,
               0.0
             ],
             "end": [
-              0.10610329539459688,
-              1.0
+              0.3183098861837907,
+              0.3333333333333333
             ]
           },
           "expressions": [
             "fake_diameter/2",
             "0",
             "fake_diameter/2",
-            "fake_height"
+            "height"
           ]
         }
       },
@@ -133,7 +139,11 @@
       ],
       "modifier_first": "Nothing",
       "modifier_last": "Nothing",
-      "cuts": []
+      "cuts": [],
+      "fullness": [
+        0.0,
+        0.0
+      ]
     }
   ]
 }

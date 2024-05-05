@@ -54,7 +54,7 @@ Advanced:
 * 3D visualizer - DONE
 * PDF output - DONE
 * Multiple bands (e.g. DGB) - DONE
-* Gore fullness expansion (e.g. for ringsail)
+* Gore fullness expansion (e.g. for ringsail) - DONE
 
 Ideas
 
