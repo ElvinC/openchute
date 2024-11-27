@@ -16,7 +16,7 @@ If you're on Windows, download the latest version from the releases. On another 
 6. The displayed "Chute canopy area" can be used for drag estimation. The "Total area" can be used for mass estimation.
 7. `file->save design` and save the design somewhere
 8. For printing out the pattern, use `expert PDF`. Print out the pattern at 100% scale. Adobe acrobat reader or similar can print tile multiple sheets (poster mode). A project backup is saved with the pdf.
-9. For laser cutting, use `expert DXF`, note that the units are mm by default.
+9. For laser cutting, use `export DXF`, note that the units are mm by default.
 10. Sew the parachute :). Some useful resources are towards bottom of this page.
 
 # Code todos
